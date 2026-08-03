@@ -693,6 +693,8 @@ async function showMyReports(){
   let data=await r.json();
   if(!data.length){c.innerHTML='<p style="color:var(--muted)">暂无报告</p>';return}
   let html='<h2 style="font-family:\'Noto Serif SC\';font-size:20px;margin-bottom:16px">我的报告</h2>';
+  // 同行业去重，保留每个行业最新一条
+  let seen=new Set();data=data.filter(d=>{let k=d.industry;if(seen.has(k))return false;seen.add(k);return true});
   if(!data.length){html+='<p style="color:var(--muted)">暂无报告</p>'}
   data.reverse().forEach((d,i)=>{
     let t=new Date(d.time);

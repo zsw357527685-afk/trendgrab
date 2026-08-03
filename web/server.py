@@ -395,8 +395,6 @@ def _use_code(code: str, mode: str, industry: str, path: str):
     if c and c.get(f"{mode}_left", 0) > 0:
         c[f"{mode}_left"] -= 1
     if c is not None:
-        # 同行业同模式去重，只保留最新
-        c["reports"] = [r for r in c.get("reports", []) if not (r.get("industry") == industry and r.get("mode") == mode)]
         c["reports"].append({"industry": industry, "mode": mode, "time": datetime.now().isoformat()})
     _save_auth(data)
 
