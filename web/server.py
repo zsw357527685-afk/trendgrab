@@ -802,12 +802,14 @@ async def deep_research(req: GenerateRequest):
                     temperature=0.7, max_tokens=4000,
                 )
                 chapters[idx] = resp.choices[0].message.content
-                deep_tasks[task_id]["progress"] = 15 + int((idx + 1) / len(DEEP_CHAPTERS) * 60)
 
             with ThreadPoolExecutor(max_workers=len(DEEP_CHAPTERS)) as pool:
                 futures = [pool.submit(_gen_chapter, i) for i in range(len(DEEP_CHAPTERS))]
+                completed = 0
                 for f in as_completed(futures):
                     f.result()
+                    completed += 1
+                    deep_tasks[task_id]["progress"] = 15 + int(completed / len(DEEP_CHAPTERS) * 60)
 
             # 3. 生成扉页摘要（用LLM从主报告提取精简概览）
             deep_tasks[task_id]["phase"] = "stitch"
