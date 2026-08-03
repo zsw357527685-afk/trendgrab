@@ -890,7 +890,7 @@ class ExportRequest(BaseModel):
     industry: str
 
 
-HTML_CONVERT_PROMPT = """你是一个前端工程师。将以下 Markdown 行业白皮书转换为一个完整的 HTML 页面。
+HTML_CONVERT_PROMPT = """你是一个前端工程师。将以下 Markdown 行业白皮书转换为一个完整的 HTML 页面。Markdown 中的 [↗](URL) 格式必须原样保留为可点击链接，不要改成别的格式。
 
 ## 样式参考
 
