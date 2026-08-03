@@ -1,0 +1,83 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: trendgrab-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: miniflux
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-miniflux_secret}
+      POSTGRES_DB: miniflux
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miniflux"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monitor-net
+
+  miniflux:
+    image: miniflux/miniflux:latest
+    container_name: trendgrab-miniflux
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://miniflux:${DB_PASSWORD:-miniflux_secret}@db:5432/miniflux?sslmode=disable
+      RUN_MIGRATIONS: 1
+      CREATE_ADMIN: 1
+      ADMIN_USERNAME: ${MINIFLUX_ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${MINIFLUX_ADMIN_PASSWORD:-admin123}
+      POLLING_FREQUENCY: 60
+      BATCH_SIZE: 20
+      POLLING_PARSING_ERROR_LIMIT: 0
+      FETCHER_ALLOW_PRIVATE_NETWORKS: 1
+      CLEANUP_ARCHIVE_UNREAD_DAYS: 180
+      CLEANUP_ARCHIVE_READ_DAYS: 90
+    networks:
+      - monitor-net
+
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: trendgrab-rsshub
+    restart: unless-stopped
+    ports:
+      - "1201:1200"
+    environment:
+      CACHE_TYPE: memory
+      CACHE_EXPIRE: 600
+      # Request limit & concurrency
+      REQUEST_RETRY: 2
+      # Debug mode off for production
+      DEBUG_INFO: "false"
+      # Enable hotlink protection bypass
+      DISALLOW_ROBOT: "false"
+    networks:
+      - monitor-net
+
+  changedetection:
+    image: dgtlmoon/changedetection.io:latest
+    container_name: trendgrab-changedetection
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    environment:
+      # Disable playwright for lightweight mode
+      PLAYWRIGHT_DRIVER_URL: ""
+      # Store data persistently
+      DATABASE_URL: sqlite:////datastore/database.db
+      # API access token for programmatic access
+      API_ACCESS_TOKEN: ${CHANGEDETECTION_API_KEY:-trend_grab_cd_key}
+    volumes:
+      - ./data/changedetection:/datastore
+    networks:
+      - monitor-net
+
+networks:
+  monitor-net:
+    driver: bridge
+    name: trendgrab-net

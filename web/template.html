@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>外商联盟 · 给资本的核心逻辑</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Noto+Serif+SC:wght@400;600;700;900&family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #FAFAF7;
+            --bg2: #F4F2EC;
+            --bg3: #EDE9DF;
+            --white: #FFFFFF;
+            --ink: #1A1A24;
+            --ink2: #2E2E3A;
+            --ink3: #4A4A58;
+            --muted: #8A8898;
+            --border: #E2DDD4;
+            --gold: #B8871A;
+            --gold2: #D4A843;
+            --gold3: #E8C87A;
+            --gold-bg: #FDF6E7;
+            --gold-border: #EDD89A;
+            --red: #B83232;
+            --red-bg: #FDF2F2;
+            --teal: #0A6B6A;
+            --teal-bg: #EEF8F8;
+            --blue: #1B4F8A;
+            --blue-bg: #EEF4FB;
+            --green: #1A6B3C;
+            --green-bg: #EEF8F3;
+            --purple: #5B2D8A;
+            --orange: #C46A0A;
+            --orange-bg: #FFF4E6;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(250, 250, 247, 0.96);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            height: 54px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 48px;
+        }
+        .nav-logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 15px;
+            color: var(--gold);
+            letter-spacing: 0.05em;
+            font-weight: 700;
+        }
+        .nav-links {
+            display: flex;
+            gap: 0;
+            overflow-x: auto;
+        }
+        .nav-link {
+            padding: 0 16px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: var(--muted);
+            text-decoration: none;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .nav-link:hover,
+        .nav-link.on {
+            color: var(--gold);
+            border-bottom-color: var(--gold2);
+        }
+
+        .hero {
+            padding: 120px 48px 80px;
+            background: linear-gradient(160deg, #FFF9EE 0%, #FAFAF7 50%, #F0EDFF 100%);
+            position: relative;
+            overflow: hidden;
+            border-bottom: 1px solid var(--border);
+        }
+        .hero-deco {
+            position: absolute;
+            right: -80px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(184, 135, 26, 0.07) 0%, rgba(184, 135, 26, 0.02) 50%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero-deco2 {
+            position: absolute;
+            left: -120px;
+            bottom: -100px;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(91, 45, 138, 0.05) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero-wrap {
+            max-width: 960px;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            margin: 0 auto;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--gold-bg);
+            border: 1px solid var(--gold-border);
+            padding: 6px 14px;
+            border-radius: 20px;
+            margin-bottom: 24px;
+            animation: fadeUp 0.6s ease both;
+        }
+        .hero-badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--gold2);
+            animation: pulse 2s infinite;
+        }
+        .hero-badge-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--gold);
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+        .hero-title {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(44px, 6vw, 76px);
+            font-weight: 900;
+            color: var(--ink);
+            line-height: 0.98;
+            margin-bottom: 24px;
+            animation: fadeUp 0.6s 0.08s ease both;
+        }
+        .hero-title span {
+            color: var(--gold);
+            font-style: italic;
+        }
+        .hero-sub {
+            font-size: 18px;
+            color: var(--ink3);
+            line-height: 1.8;
+            max-width: 720px;
+            margin: 0 auto 24px auto;
+            animation: fadeUp 0.6s 0.16s ease both;
+        }
+        .hero-author {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 15px;
+            color: var(--gold);
+            font-weight: 700;
+            margin-bottom: 44px;
+            letter-spacing: 0.05em;
+            animation: fadeUp 0.6s 0.20s ease both;
+        }
+        .hero-kpis {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            animation: fadeUp 0.6s 0.24s ease both;
+            flex-wrap: wrap;
+        }
+        .hero-kpi {
+            padding: 20px 28px;
+            border: 1px solid var(--border);
+            background: var(--white);
+            margin-right: -1px;
+        }
+        .hero-kpi:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+        .hero-kpi:last-child {
+            border-radius: 0 8px 8px 0;
+        }
+        .kn {
+            font-family: 'Playfair Display', serif;
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--gold);
+            line-height: 1;
+        }
+        .kl {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 5px;
+            line-height: 1.4;
+        }
+        @media(max-width:640px) {
+            .hero-kpi {
+                min-width: calc(50% - 4px);
+                margin-right: 0;
+                border-radius: 0 !important;
+            }
+            .hero-kpi:nth-child(1) {
+                border-radius: 4px 0 0 0 !important;
+            }
+            .hero-kpi:nth-child(2) {
+                border-radius: 0 4px 0 0 !important;
+            }
+            .hero-kpi:nth-child(3) {
+                border-radius: 0 0 0 4px !important;
+            }
+            .hero-kpi:nth-child(4) {
+                border-radius: 0 0 4px 0 !important;
+            }
+        }
+
+        section {
+            padding: 80px 0;
+        }
+        .sec-alt {
+            background: var(--bg2);
+        }
+        .sec-accent {
+            background: linear-gradient(135deg, #FFF9EE, #FAFAF7);
+        }
+        .sec-dark {
+            background: var(--ink);
+            color: var(--white);
+        }
+        .sec-dark .sec-h {
+            color: var(--white);
+        }
+        .sec-dark .sec-d {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        .wrap {
+            max-width: 1360px;
+            margin: 0 auto;
+            padding: 0 48px;
+        }
+        .sec-ey {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10.5px;
+            color: var(--gold);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .sec-h {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(32px, 4vw, 48px);
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1.1;
+        }
+        .sec-d {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.75;
+            max-width: 420px;
+        }
+        .sec-head {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            margin-bottom: 48px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .fi {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        .fi.on {
+            opacity: 1;
+            transform: none;
+        }
+        .d1 {
+            transition-delay: 0.07s;
+        }
+        .d2 {
+            transition-delay: 0.14s;
+        }
+        .d3 {
+            transition-delay: 0.21s;
+        }
+        .d4 {
+            transition-delay: 0.28s;
+        }
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.35;
+            }
+        }
+
+        /* ─── 利润黑洞 · 白底版本 ─── */
+        .profit-block {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 40px 48px;
+            margin-bottom: 40px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+        .profit-block .pb-figure {
+            font-family: 'Playfair Display', serif;
+            font-size: 56px;
+            font-weight: 900;
+            color: var(--gold);
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .profit-block .pb-figure small {
+            font-size: 20px;
+            font-weight: 400;
+            color: var(--muted);
+        }
+        .profit-block .pb-body {
+            font-size: 15px;
+            color: var(--ink2);
+            line-height: 1.9;
+        }
+        .profit-block .pb-body strong {
+            color: var(--ink);
+        }
+        .profit-block .pb-body .highlight {
+            color: var(--gold);
+            font-weight: 600;
+        }
+        .profit-block .pb-sub {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        /* ─── 对比表 ─── */
+        .compare-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+        .compare-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 28px 24px;
+            transition: box-shadow 0.25s, transform 0.25s;
+            border-top: 4px solid var(--gold2);
+        }
+        .compare-card:hover {
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07);
+            transform: translateY(-3px);
+        }
+        .compare-card.cc-highlight {
+            border-top-color: var(--gold);
+            background: var(--gold-bg);
+            border-color: var(--gold-border);
+        }
+        .compare-card .cc-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 0.1em;
+            margin-bottom: 6px;
+        }
+        .compare-card .cc-name {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 10px;
+        }
+        .compare-card .cc-body {
+            font-size: 13px;
+            color: var(--ink3);
+            line-height: 1.8;
+        }
+        .compare-card .cc-body strong {
+            color: var(--ink);
+        }
+        .compare-card .cc-tag {
+            display: inline-block;
+            margin-top: 12px;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 3px 10px;
+            border-radius: 12px;
+        }
+        .cc-tag.bad {
+            background: var(--red-bg);
+            border: 1px solid #F0BEBE;
+            color: var(--red);
+        }
+        .cc-tag.good {
+            background: var(--gold-bg);
+            border: 1px solid var(--gold-border);
+            color: var(--gold);
+        }
+
+        /* ─── 飞轮图 ─── */
+        .flywheel-big {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 36px;
+        }
+        .fw-item {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 28px 22px;
+            text-align: center;
+            transition: box-shadow 0.25s, transform 0.25s;
+        }
+        .fw-item:hover {
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07);
+            transform: translateY(-3px);
+        }
+        .fw-item .fw-icon {
+            font-size: 32px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .fw-item .fw-label {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+        .fw-item .fw-desc {
+            font-size: 12.5px;
+            color: var(--muted);
+            margin-top: 6px;
+            line-height: 1.6;
+        }
+
+        /* ─── 单元经济 ─── 均衡对齐 */
+        .unit-econ {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 36px;
+        }
+        .unit-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 30px 28px;
+            display: flex;
+            flex-direction: column;
+        }
+        .unit-card .uc-ey {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 0.1em;
+            margin-bottom: 4px;
+        }
+        .unit-card .uc-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 14px;
+        }
+        .unit-card .uc-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .unit-card .uc-row:last-child {
+            border-bottom: none;
+        }
+        .unit-card .uc-row .uc-label {
+            color: var(--muted);
+        }
+        .unit-card .uc-row .uc-val {
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .unit-card .uc-total {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 2px solid var(--gold-border);
+            font-family: 'Playfair Display', serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gold);
+            text-align: right;
+        }
+        .unit-card.uc-bad .uc-total {
+            color: var(--red);
+        }
+
+        /* 为左侧补充占位内容，使两栏高度均衡 */
+        .unit-card .uc-placeholder {
+            flex: 1;
+            min-height: 20px;
+        }
+
+        /* ─── 护城河卡片 ─── */
+        .moat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .moat-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 26px 22px;
+            border-top: 4px solid var(--gold2);
+            transition: box-shadow 0.25s, transform 0.25s;
+        }
+        .moat-card:hover {
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07);
+            transform: translateY(-3px);
+        }
+        .moat-card .mc-icon {
+            font-size: 28px;
+            margin-bottom: 10px;
+            display: block;
+        }
+        .moat-card .mc-name {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+        .moat-card .mc-body {
+            font-size: 12.5px;
+            color: var(--ink3);
+            line-height: 1.8;
+        }
+        .moat-card .mc-body strong {
+            color: var(--ink);
+        }
+
+        /* ─── 组织度区块 · 浅黄底 ─── */
+        .org-block {
+            background: var(--gold-bg);
+            border: 1px solid var(--gold-border);
+            border-radius: 4px;
+            padding: 32px 40px;
+            text-align: center;
+        }
+        .org-block .org-line {
+            font-family: 'Playfair Display', serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--ink);
+            line-height: 1.5;
+        }
+        .org-block .org-line .gold {
+            color: var(--gold);
+        }
+        .org-block .org-sub {
+            font-size: 14px;
+            color: var(--ink3);
+            margin-top: 8px;
+        }
+
+        /* ─── 时间窗口 ─── */
+        .window-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .window-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 28px 24px;
+            border-left: 4px solid var(--gold2);
+            transition: box-shadow 0.25s, transform 0.25s;
+        }
+        .window-card:hover {
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07);
+            transform: translateY(-3px);
+        }
+        .window-card .wc-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .window-card .wc-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+        .window-card .wc-body {
+            font-size: 13px;
+            color: var(--ink3);
+            line-height: 1.8;
+        }
+
+        /* ─── 收尾引语 ─── */
+        .closing-block {
+            background: var(--ink);
+            border-radius: 4px;
+            padding: 56px 64px;
+            text-align: center;
+        }
+        .closing-block .cb-line {
+            font-family: 'Playfair Display', serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--gold2);
+            line-height: 1.5;
+            max-width: 900px;
+            margin: 0 auto 16px;
+        }
+        .closing-block .cb-sub {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 0.05em;
+        }
+        .closing-block .cb-sub strong {
+            color: var(--gold2);
+        }
+
+        footer {
+            background: var(--ink);
+            padding: 48px;
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+        .ft-logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 20px;
+            color: var(--gold2);
+            margin-bottom: 14px;
+        }
+        .ft-text {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.25);
+            line-height: 1.9;
+        }
+
+        @media(max-width:1200px) {
+            .moat-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .flywheel-big {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media(max-width:1024px) {
+            .compare-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .window-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .unit-econ {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media(max-width:768px) {
+            nav {
+                padding: 0 16px;
+            }
+            .nav-links {
+                gap: 0;
+                overflow-x: auto;
+            }
+            .nav-link {
+                padding: 0 10px;
+                font-size: 10px;
+            }
+            .hero {
+                padding: 80px 16px 48px;
+            }
+            .hero-wrap {
+                text-align: left;
+            }
+            .hero-sub {
+                margin-left: 0;
+                margin-right: 0;
+            }
+            .wrap {
+                padding: 0 16px;
+            }
+            .sec-head {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .compare-grid {
+                grid-template-columns: 1fr;
+            }
+            .flywheel-big {
+                grid-template-columns: 1fr;
+            }
+            .window-grid {
+                grid-template-columns: 1fr;
+            }
+            .moat-grid {
+                grid-template-columns: 1fr;
+            }
+            .closing-block {
+                padding: 32px 20px;
+            }
+            .closing-block .cb-line {
+                font-size: 20px;
+            }
+            .hero-kpis .hero-kpi {
+                padding: 14px 16px;
+            }
+            .hero-kpis .kn {
+                font-size: 22px;
+            }
+            .profit-block {
+                padding: 24px 20px;
+            }
+            .profit-block .pb-figure {
+                font-size: 36px;
+            }
+            .org-block {
+                padding: 24px 20px;
+            }
+            .org-block .org-line {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="nav-logo">外商联盟 · 资本逻辑</div>
+        <div class="nav-links">
+            <a class="nav-link" href="#thesis">核心命题</a>
+            <a class="nav-link" href="#model">商业模式</a>
+            <a class="nav-link" href="#moat">壁垒</a>
+            <a class="nav-link" href="#economics">单元经济</a>
+            <a class="nav-link" href="#window">时间窗口</a>
+        </div>
+    </nav>
+
+    <!-- ─── HERO ─── -->
+    <div class="hero">
+        <div class="hero-deco"></div>
+        <div class="hero-deco2"></div>
+        <div class="hero-wrap">
+            <div class="hero-badge">
+                <div class="hero-badge-dot"></div>
+                <div class="hero-badge-text">外商联盟 · 给资本的核心逻辑</div>
+            </div>
+            <h1 class="hero-title">终结<span>产业带内战</span><br>重划中国制造<span>利润秩序</span></h1>
+            <p class="hero-sub">中国制造业每年有20%的利润被产业带内部自相残杀、层层转包白白烧掉。谁把这笔钱捞出来，就是谁的。</p>
+            <div class="hero-author">外商联盟 · 战略白皮书 2026 · 资本专版</div>
+            <div class="hero-kpis">
+                <div class="hero-kpi"><div class="kn">20%</div><div class="kl">被内耗吞噬的制造业利润</div></div>
+                <div class="hero-kpi"><div class="kn">1,200+</div><div class="kl">楼内常驻外商</div></div>
+                <div class="hero-kpi"><div class="kn">17层</div><div class="kl">义乌CBD · 产业带飞地</div></div>
+                <div class="hero-kpi"><div class="kn">3,000–5,000亿$</div><div class="kl">可触达关联采购规模</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── 1. 核心命题 ─── -->
+    <section id="thesis">
+        <div class="wrap">
+            <div class="sec-head fi">
+                <div>
+                    <div class="sec-ey">01 · 赛道重新定义</div>
+                    <h2 class="sec-h">不是“帮工厂卖货”<br>是“终结产业带内战”</h2>
+                </div>
+                <p class="sec-d">过去十年所有项目都在赌谁能帮中国工厂把货卖出去。我们赌的是另一件事。</p>
+            </div>
+
+            <!-- 利润黑洞 · 白底 -->
+            <div class="profit-block fi fi-d1">
+                <div class="pb-figure">20% <small>利润黑洞</small></div>
+                <div class="pb-body">
+                    <strong>中国制造业每年有20个点的利润，不是被外商赚走，不是被品牌方拿走——是被两件蠢事白白烧掉：</strong><br><br>
+                    <span class="highlight">产业带内部恶性报价：</span>一百家工厂对着同一个外商互相杀价，把价格杀到成本线，大家集体不赚钱；<br><br>
+                    <span class="highlight">层层转包抽血：</span>一个订单转七手，每手吃10%，工厂拿到手的时候利润已经薄到不敢保质量。<br><br>
+                    这笔钱谁都没拿到——工厂累死累活，外商也没因此买到更好的货——<strong>它被内耗和摩擦层烧掉了。</strong>
+                </div>
+                <div class="pb-sub">阿里国际站、亚马逊、各种SaaS，本质都是在帮工厂“更高效地参与这场内战”——你烧钱买流量，我优化你的转化率，最后大家一起把利润卷没。</div>
+            </div>
+
+            <div style="background:var(--gold-bg);border:1px solid var(--gold-border);border-left:5px solid var(--gold2);padding:28px 32px;border-radius:0 4px 4px 0;margin-bottom:20px;" class="fi fi-d2">
+                <p style="font-size:16px;color:var(--ink2);line-height:1.9;">
+                    <strong style="color:var(--gold);">平台赚的不是外商的钱，赚的是中国工厂互相杀价、竞相烧钱的血汗钱。</strong> 工厂利润薄如纸，平台利润肥如油。<br><br>
+                    我们不参与这场战争。<strong style="color:var(--gold);">我们终结它。</strong>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── 2. 商业模式 ─── -->
+    <section id="model" class="sec-alt">
+        <div class="wrap">
+            <div class="sec-head fi">
+                <div>
+                    <div class="sec-ey">02 · 商业本质</div>
+                    <h2 class="sec-h">收“产业带和平税”</h2>
+                </div>
+                <p class="sec-d">不是零和博弈，是正和游戏。唯一消失的，是不创造价值的中间商。</p>
+            </div>
+
+            <div class="compare-grid fi fi-d1">
+                <div class="compare-card">
+                    <div class="cc-label">模式</div>
+                    <div class="cc-name">传统外贸公司</div>
+                    <div class="cc-body">赚的是<strong>信息差</strong>。博弈结构：压工厂价、哄外商价。工厂和外商都是韭菜。</div>
+                    <span class="cc-tag bad">零和博弈</span>
+                </div>
+                <div class="compare-card">
+                    <div class="cc-label">模式</div>
+                    <div class="cc-name">流量平台</div>
+                    <div class="cc-body">赚的是<strong>流量税</strong>。挑动工厂内斗，卖流量给出价高的。越内卷平台越赚，工厂越亏。</div>
+                    <span class="cc-tag bad">内卷放大器</span>
+                </div>
+                <div class="compare-card cc-highlight">
+                    <div class="cc-label">模式 · 我们</div>
+                    <div class="cc-name">外商联盟</div>
+                    <div class="cc-body">赚的是<strong>组织费</strong>。和工厂绑定：工厂出厂价锁死，我们只赚增量。工厂赚得越多，我们赚得越多。</div>
+                    <span class="cc-tag good">正和游戏</span>
+                </div>
+            </div>
+
+            <div style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:32px 36px;margin-bottom:20px;" class="fi fi-d2">
+                <h4 style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);margin-bottom:16px;">核心动作：把一个产业带里互相杀价的工厂“组织”起来</h4>
+                <ul style="list-style:none;font-size:14px;color:var(--ink2);line-height:2.4;">
+                    <li style="padding:6px 0;border-bottom:1px solid var(--border);">✅ <strong>砍掉转包层：</strong>工厂 → 平台合资销售公司 → 外商，三个环节，没有第四个人分钱</li>
+                    <li style="padding:6px 0;border-bottom:1px solid var(--border);">✅ <strong>锁定工厂底价：</strong>工厂成本10元、出厂价12元（2元合理利润），白纸黑字锁死，平台不碰。平台卖给外商15元，承担资金与履约风险，赚中间3元</li>
+                    <li style="padding:6px 0;">✅ <strong>统一对外报价：</strong>不是工厂横向约定价格（违法），是平台作为统一销售方纵向整合——对外只有一个报价主体，工厂不再互相砍价</li>
+                </ul>
+                <div style="margin-top:20px;padding-top:20px;border-top:2px solid var(--gold-border);font-size:15px;color:var(--ink2);line-height:1.9;">
+                    <strong style="color:var(--gold);">结果：</strong><br>
+                    工厂拿到稳定的12元，比原来在内卷中赚的多得多，而且回款快、不被拖欠；<br>
+                    外商拿到15元的确定性：透明价格、品质兜底、平台担责；<br>
+                    平台拿3元，是从“被烧掉的那20%”里切出来的增量，不是从工厂或外商嘴里抠的。<br><br>
+                    <strong style="color:var(--gold);">这不是零和博弈，是正和游戏。</strong> 唯一消失的，是那些不创造价值的转包中间商和内卷本身。
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── 3. 护城河 ─── -->
+    <section id="moat">
+        <div class="wrap">
+            <div class="sec-head fi">
+                <div>
+                    <div class="sec-ey">03 · 垄断性壁垒</div>
+                    <h2 class="sec-h">组织度 = 不可复制的护城河</h2>
+                </div>
+                <p class="sec-d">要让一群互相杀了二十年价格的工厂老板，坐下来签一份“不再自相残杀”的协议，需要什么？</p>
+            </div>
+
+            <div class="moat-grid fi fi-d1">
+                <div class="moat-card">
+                    <span class="mc-icon">🏢</span>
+                    <div class="mc-name">物理场域</div>
+                    <div class="mc-body"><strong>义乌福田CBD核心区</strong>17层大楼，7层外商办公+10层产业带展厅——办公租户即展厅客流，内生循环，位置不可再得。</div>
+                </div>
+                <div class="moat-card">
+                    <span class="mc-icon">👥</span>
+                    <div class="mc-name">存量外商底盘</div>
+                    <div class="mc-body">平台商业写字楼五年积累的<strong>1,200家常驻外商</strong>，辐射义乌全市8,000家进出口公司、年采购5,000亿以上。</div>
+                </div>
+                <div class="moat-card">
+                    <span class="mc-icon">🤝</span>
+                    <div class="mc-name">产业带关键人</div>
+                    <div class="mc-body">每个产业带都有一个“带头大哥”，他的威望+我们的利益设计（让他成为合资公司核心股东），把他变成我们的人，他来组局。</div>
+                </div>
+                <div class="moat-card">
+                    <span class="mc-icon">🔗</span>
+                    <div class="mc-name">合资绑定机制</div>
+                    <div class="mc-body">不是收会员费让工厂“入驻”，是和产业带<strong>共建合资销售公司</strong>，股权绑定、利润分成——工厂越赚钱，我们越赚钱。</div>
+                </div>
+            </div>
+
+            <!-- 组织度区块 · 浅黄底 -->
+            <div class="org-block fi fi-d2">
+                <div class="org-line">
+                    组织度，就是<span class="gold">垄断</span>。<br>
+                    一个产业带，只能有一个“秩序制定者”。我们先占了，就是我们的。
+                </div>
+                <div class="org-sub">场域不可复制 · 外商关系不可复制 · 先发优势不可逆</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── 4. 单元经济与复制 ─── -->
+    <section id="economics" class="sec-accent">
+        <div class="wrap">
+            <div class="sec-head fi">
+                <div>
+                    <div class="sec-ey">04 · 增长飞轮</div>
+                    <h2 class="sec-h">从一层楼到千亿规模</h2>
+                </div>
+                <p class="sec-d">单层样板跑通后，复制逻辑清晰——中国有上千个产业集群。</p>
+            </div>
+
+            <div class="unit-econ fi fi-d1">
+                <div class="unit-card uc-bad">
+                    <div class="uc-ey">❌ 传统单干模式</div>
+                    <div class="uc-title">20家各自为战</div>
+                    <div class="uc-row"><span class="uc-label">租金（20家 × 平均30万）</span><span class="uc-val">600万/年</span></div>
+                    <div class="uc-row"><span class="uc-label">人员（每家2–3人 × 20家）</span><span class="uc-val">400万/年</span></div>
+                    <div class="uc-row" style="border-bottom:2px solid var(--red);"><span class="uc-label" style="font-weight:600;">合计</span><span class="uc-val" style="font-weight:700;color:var(--red);">约1,000万/年</span></div>
+                    <div class="uc-placeholder"></div>
+                    <div class="uc-total" style="color:var(--red);">各自为战，客流量听天由命</div>
+                </div>
+                <div class="unit-card">
+                    <div class="uc-ey">✅ 联盟共建模式</div>
+                    <div class="uc-title">20家共建一层2,000平展厅</div>
+                    <div class="uc-row"><span class="uc-label">租金（2,000平）</span><span class="uc-val">150万/年</span></div>
+                    <div class="uc-row"><span class="uc-label">装修（1,000元/平，一次性）</span><span class="uc-val">200万</span></div>
+                    <div class="uc-row"><span class="uc-label">统一运营团队（多语种精锐）</span><span class="uc-val">120万/年</span></div>
+                    <div class="uc-row" style="border-bottom:2px solid var(--gold-border);"><span class="uc-label" style="font-weight:600;">首年合计（含一次性装修）</span><span class="uc-val" style="font-weight:700;color:var(--gold);">约470万</span></div>
+                    <div class="uc-row"><span class="uc-label" style="font-weight:600;">次年起</span><span class="uc-val" style="font-weight:700;color:var(--gold);">不足300万/年</span></div>
+                    <div class="uc-total" style="color:var(--gold);">成本砍半以上 · 效果翻十倍</div>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px;" class="fi fi-d2">
+                <div style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:28px 26px;">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);letter-spacing:0.1em;margin-bottom:6px;">盈利来源</div>
+                    <ul style="list-style:none;font-size:13px;color:var(--ink3);line-height:2.2;">
+                        <li>✅ <strong>轻度会员费</strong>（1.98万–9.98万/年）：覆盖平台运营，已自负盈亏</li>
+                        <li>✅ <strong>深度代运营</strong>（核心）：工厂出厂价12元锁死，平台卖15元，赚3元增量。一个产业带年交易额做到5亿，平台综合抽成即2,500万利润</li>
+                        <li>✅ <strong>合资外贸公司分红</strong>：与产业带共建销售公司，利润按股权分成，可无限放大</li>
+                    </ul>
+                </div>
+                <div style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:28px 26px;">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);letter-spacing:0.1em;margin-bottom:6px;">复制逻辑</div>
+                    <ul style="list-style:none;font-size:13px;color:var(--ink3);line-height:2.2;">
+                        <li>📍 义乌10层楼，可容纳<strong>10个产业带</strong></li>
+                        <li>📍 中国有上千个产业集群——汕头针织、许昌假发、临沂百货、潮州陶瓷、永康五金……</li>
+                        <li>📍 每个产业带年交易额数亿到数十亿，我们拿<strong>5–10个点</strong></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:28px 32px;" class="fi fi-d3">
+                <h4 style="font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);margin-bottom:12px;">市场空间测算</h4>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center;">
+                    <div><div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--gold);">150亿$</div><div style="font-size:12px;color:var(--muted);">直接关联采购体量</div></div>
+                    <div><div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--gold);">3,000–5,000亿$</div><div style="font-size:12px;color:var(--muted);">可触达关联采购规模</div></div>
+                    <div><div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--gold);">30–500亿</div><div style="font-size:12px;color:var(--muted);">做到1%–10% 即30–500亿</div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── 5. 时间窗口 ─── -->
+    <section id="window" class="sec-alt">
+        <div class="wrap">
+            <div class="sec-head fi">
+                <div>
+                    <div class="sec-ey">05 · 三重时间窗口</div>
+                    <h2 class="sec-h">为什么是现在？</h2>
+                </div>
+                <p class="sec-d">错过这三年，就是错过一个时代。</p>
+            </div>
+
+            <div class="window-grid fi fi-d1">
+                <div class="window-card">
+                    <span class="wc-icon">🏛️</span>
+                    <div class="wc-title">政策窗口</div>
+                    <div class="wc-body">国家反内卷、扶持实体经济、鼓励高质量出海——我们做的事，<strong>政府想干却干不成</strong>。</div>
+                </div>
+                <div class="window-card">
+                    <span class="wc-icon">📉</span>
+                    <div class="wc-title">平台红利见顶</div>
+                    <div class="wc-body">流量成本高企、工厂对平台的不信任达到顶点，<strong>渴望新模式</strong>。阿里国际站等平台的工厂用户正在批量流失。</div>
+                </div>
+                <div class="window-card">
+                    <span class="wc-icon">🌊</span>
+                    <div class="wc-title">产业带主动涌入义乌</div>
+                    <div class="wc-body">全国产业带正在向义乌集中（义乌经验成为国家样板），<strong>我们在最佳位置等他们</strong>。</div>
+                </div>
+            </div>
+
+            <div style="background:var(--gold-bg);border:1px solid var(--gold-border);border-radius:4px;padding:24px 32px;" class="fi fi-d2">
+                <p style="font-size:14px;color:var(--ink2);line-height:1.9;text-align:center;">
+                    第一年只验证一件事：<strong>一层楼、一个产业带，能不能把“工厂入驻 → 外商到访 → 成交 → 履约 → 返单”的链路跑通</strong>，形成可复制的数据与标准。<br><br>
+                    数据立住，后面的十层楼、十个产业带、以及第二轮融资，都是自然生长，不需要讲故事。
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── 收尾 ─── -->
+    <section style="padding:60px 0 80px;">
+        <div class="wrap">
+            <div class="closing-block fi fi-d1">
+                <div class="cb-line">
+                    “阿里赚的是让工厂互相杀价的钱，<br>我们赚的是让工厂停止杀价的钱。”
+                </div>
+                <div class="cb-sub">
+                    他们收流量税，我们收和平税。<br>
+                    他们赌的是“谁能帮工厂卖得更多”，我们赌的是<strong>“谁能让工厂从囚徒困境里出来”</strong>。<br><br>
+                    这不是一个更大的外贸公司，<br>
+                    这是<strong style="color:var(--gold2);">中国制造业利润分配秩序的第一次系统性重构</strong>。<br><br>
+                    投的不是一门生意，是一个时代的拐点。
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="ft-logo">外商联盟 · 中国制造高质量出海基础设施</div>
+        <div class="ft-text">
+            战略白皮书 2026 · 资本专版 · 共创 · 共建 · 共享<br>
+            数据与智库支持：义乌外商联盟 · 产业带出海研究院<br><br>
+            内部学习与战略决策参考 · 让中国的好工厂，有尊严、有利润地走向世界
+        </div>
+    </footer>
+
+    <script>
+        const obs = new IntersectionObserver(entries => {
+            entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('on'); });
+        }, { threshold: 0.07, rootMargin: '0px 0px -28px 0px' });
+        document.querySelectorAll('.fi').forEach(el => obs.observe(el));
+
+        const scrollObs = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (e.isIntersecting) {
+                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('on'));
+                    const a = document.querySelector(`.nav-link[href="#${e.target.id}"]`);
+                    if (a) a.classList.add('on');
+                }
+            });
+        }, { threshold: 0.35 });
+        document.querySelectorAll('section[id]').forEach(s => scrollObs.observe(s));
+    </script>
+
+</body>
+</html>

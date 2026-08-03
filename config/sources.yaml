@@ -1,0 +1,70 @@
+# ============================================================
+# trend_grab - 行业信息监控源配置
+# 分三部分：RSSHub 路由、直接 RSS 源、页面变化监控
+# ============================================================
+
+# ---- 第一部分：RSSHub 路由 ----
+# RSSHub 会把没有 RSS 的网站转成 RSS feed
+# 路由会拼接成 http://rsshub:1200/{route}
+# 完整路由列表：https://docs.rsshub.app/
+rsshub_routes:
+  - category: "科技资讯"
+    routes:
+      - "/36kr/newsflashes"         # 36氪快讯
+      - "/zhihu/daily"              # 知乎日报
+      - "/sspai/index"              # 少数派
+      - "/juejin/category/frontend" # 掘金前端热门
+
+  - category: "开发者"
+    routes:
+      - "/hackernews/newest"       # Hacker News 最新
+
+# ---- 第二部分：直接 RSS 源 ----
+# 有原生 RSS 的网站，直接加到 Miniflux
+direct_feeds:
+  - name: "36氪"
+    url: "https://36kr.com/feed"
+    category: "科技资讯"
+    tags: ["36kr", "创投", "科技"]
+
+  - name: "InfoQ 中文"
+    url: "https://www.infoq.cn/feed"
+    category: "开发者"
+    tags: ["InfoQ", "架构", "技术"]
+
+  - name: "阮一峰的网络日志"
+    url: "https://feeds.feedburner.com/ruanyifeng"
+    category: "开发者"
+    tags: ["技术博客", "前端"]
+
+  - name: "Hacker News Frontpage"
+    url: "https://hnrss.org/frontpage"
+    category: "开发者"
+    tags: ["HN", "英文", "技术"]
+
+# ---- 第三部分：页面变化监控 ----
+# 没有 RSS 的重要页面，用 changedetection.io 盯变化
+watch_targets:
+  - name: "工信部政策文件"
+    url: "https://www.miit.gov.cn/zwgk/zcwj/"
+    css_selector: ".pageContent"
+    category: "政策法规"
+    tags: ["工信部", "政策", "法规"]
+
+  - name: "国务院政策"
+    url: "https://www.gov.cn/zhengce/"
+    css_selector: ".news_box"
+    category: "政策法规"
+    tags: ["国务院", "政策"]
+
+  - name: "网信办通知公告"
+    url: "https://www.cac.gov.cn/wxzw/A0937index_1.htm"
+    css_selector: ".list"
+    category: "政策法规"
+    tags: ["网信办", "互联网监管"]
+
+# ---- 报告设置 ----
+report:
+  lookback_hours: 24          # 回溯多久的数据
+  max_entries_per_feed: 30    # 每个源最多取多少条
+  output_dir: "./output"      # 输出目录
