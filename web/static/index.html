@@ -756,5 +756,9 @@ async function loadAdminRpt(p,n){closeAdmin();let s=document.getElementById('sta
 async function shareReport(){if(!currentIndustry)return;try{let r=await fetch('/api/share?industry='+encodeURIComponent(currentIndustry)+'&code='+myCode,{method:'POST'});let d=await r.json();if(!r.ok)throw new Error(d.detail||'创建失败');let url=window.location.origin+d.url;navigator.clipboard.writeText(url).then(()=>alert('分享链接已复制:\n'+url)).catch(()=>prompt('复制链接:',url));}catch(e){alert('分享失败: '+e.message)}}
 </script>
 
+<footer style="text-align:center;padding:20px;color:var(--muted);font-size:11px" id="pageFooter"></footer>
+<script>
+fetch('/api/version').then(r=>r.json()).then(d=>{document.getElementById('pageFooter').textContent='v'+d.version+' | '+d.date}).catch(()=>{});
+</script>
 </body>
 </html>

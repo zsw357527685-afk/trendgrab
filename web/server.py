@@ -30,7 +30,7 @@ from pydantic import BaseModel
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.0")
+app = FastAPI(title="trend_grab", version="2.8.1")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -873,7 +873,7 @@ async def deep_research(req: GenerateRequest):
             deep_tasks[task_id]["phase"] = "stitch"
             intro_resp = client.chat.completions.create(
                 model=LLM_MODEL,
-                messages=[{"role": "user", "content": f"为以下行业报告写一篇300-400字的开篇概述。用2-3段流畅的文字，不要使用任何###小标题。内容聚焦：这个行业的全球规模与增速、中国在产业链中的角色、当前最值得关注的1-2个变化信号。语气像是跟一个做生意的朋友聊天，告诉他'这个行业现在大概是什么情况、有什么值得注意'。禁止Markdown加粗。原文的[↗](URL)链接必须保留。\n\n{main_report[:5000]}"}],
+                messages=[{"role": "user", "content": f"为以下行业报告写一篇800-1000字的行业概览。用4-5段文字，不使用###小标题，直接分段。内容覆盖：全球市场规模与增速（多口径对比）、中国在全球产业链的位置（制造份额、出口比例）、消费者结构变化、主要子品类或价格带分化、产业地理分布。每个数据点保留[↗](URL)引用。不用加粗。语气专业平实，不是聊天，是行业分析。\n\n{main_report[:8000]}"}],
                 temperature=0.5, max_tokens=800,
             )
             overview = intro_resp.choices[0].message.content
@@ -1214,6 +1214,14 @@ async def create_share(industry: str = "", code: str = ""):
 
 # ── 静态文件 ──
 static_dir = PROJECT_ROOT / "web" / "static"
+
+
+@app.get("/api/version")
+async def get_version():
+    return {"version": "2.8.1", "date": "2026-08-04"}
+
+
+# ── 静态文件 ──
 if static_dir.exists():
     app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
