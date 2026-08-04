@@ -552,7 +552,7 @@ def _fetch_trade_data(industry: str) -> str:
                             got_total = True
                         val = china_match.group(1).replace(',', '')
                         kg = kg_match.group(1).replace(',', '') if kg_match else '?'
-                        trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg)\n"
+                        trade_text += f"{year}年: 中国出口${float(val)*1000:,.0f} ({kg}kg)\n"  # WITS单位千美元
             if got_total and year == 2024:
                 dest_url = f"https://wits.worldbank.org/trade/comtrade/en/country/CHN/year/2024/tradeflow/Exports/partner/ALL/product/{hs}"
                 dr = httpx.get(dest_url, timeout=3, headers={"User-Agent": "Mozilla/5.0"})
