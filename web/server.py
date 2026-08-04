@@ -109,7 +109,7 @@ DIMENSIONS = {
 
 # ── 深度研究专用搜索维度（更聚焦、更精准）──
 # ── 深度研究：每章独立搜索 + 系统提示 ──
-DEEP_CITE = "引用数据时必须用 [↗](URL) 格式标注来源，禁止编造链接。研究材料中每条数据都有真实URL，直接复制使用。全章来源标注不少于10处，均匀分布，不集中堆在开头。写作时观点先行——每小节开头放一句可被引用的判断句，后续用数据和案例支撑。事实性信息（公司背景、产品参数）只在最相关的章节完整讲述一次，其他章节引用时用'如前所述'带过。"
+DEEP_CITE = "引用数据时必须用 [↗](URL) 格式标注来源，禁止编造链接。研究材料中每条数据都有真实URL，直接复制使用。全章来源标注不少于10处，均匀分布，不集中堆在开头。"
 
 DEEP_CHAPTERS = [
     {
@@ -891,6 +891,22 @@ async def deep_research(req: GenerateRequest):
                     ch_clean = re.sub(r'^#.*$', '', ch, flags=re.MULTILINE).strip()
                     report += f"## {nums[i]}、{DEEP_CHAPTERS[i]['title']}\n\n{ch_clean}\n\n---\n\n"
             report += "\n\n*第一章为行业概览，第二至六章逐章独立搜索生成。数据来源以 [↗](URL) 格式标注于各章节内。*"
+
+            # 4.5 最终编辑：去重+挂钩+观点前置+收束
+            deep_tasks[task_id]["phase"] = "edit"
+            edit_prompt = f"""你是资深商业编辑。对以下报告进行最终润色，不改结构，只做四件事：
+1. 去重：同一公司背景、产品参数、市场数据，只在最相关章节出现一次，后文用"如前所述"引用。不同角度的分析可以保留。
+2. 挂钩：每章开头用一两句接上一章，每章结尾用一两句引出下一章。让七章形成因果链。
+3. 观点前置：每个小节开头是判断句，数据在后。
+4. 收束：第七章结尾自然收束前六章线索。
+
+输出完整报告，[↗](URL)链接全部保留。"""
+            resp = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[{"role": "user", "content": f"{edit_prompt}\n\n{report[:20000]}"}],
+                temperature=0.5, max_tokens=12000,
+            )
+            report = resp.choices[0].message.content
 
             merged_path.write_text(report, encoding="utf-8")
             deep_tasks[task_id]["progress"] = 100
