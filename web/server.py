@@ -571,10 +571,10 @@ def _fetch_trade_data(industry: str) -> str:
         if not all_codes:
             return ""
 
-        # 第三步：逐个编码查WITS
+        # 第三步：逐个编码查WITS（总量 + 目的地）
         trade_text = ""
         for hs in list(all_codes)[:5]:
-            got_data = False
+            got_total = False
             wits_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/2024/tradeflow/Exports/partner/WLD/product/{hs}"
             for year in [2024, 2023, 2022]:
                 url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs}"
@@ -582,17 +582,31 @@ def _fetch_trade_data(industry: str) -> str:
                 if r.status_code == 200:
                     import re as re2
                     china_match = re2.search(r'China.{0,300}?([\d,.]+)', r.text)
-                    world_match = re2.search(r'World</a>.*?([\d,.]+)', r.text, re.DOTALL)
                     kg_match = re2.search(r'China.*?(\d[\d,.]*)\s*Kg', r.text)
+                    world_match = re2.search(r'World</a>.*?([\d,.]+)', r.text, re.DOTALL)
                     if china_match:
-                        if not got_data:
+                        if not got_total:
                             trade_text += f"\n【贸易数据 - HS{hs} [↗]({wits_url})】\n"
-                            got_data = True
+                            got_total = True
                         val = china_match.group(1).replace(',', '')
                         kg = kg_match.group(1).replace(',', '') if kg_match else '?'
                         world_val = world_match.group(1).replace(',', '') if world_match else '?'
                         trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg), 全球${float(world_val):,.0f}\n"
-            if got_data:
+            # 查中国出口目的地TOP5
+            if got_total:
+                dest_url = f"https://wits.worldbank.org/trade/comtrade/en/country/CHN/year/2024/tradeflow/Exports/partner/ALL/product/{hs}"
+                dr = httpx.get(dest_url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+                if dr.status_code == 200:
+                    import re as re2
+                    pairs = re2.findall(r'([\w\s]+)\s*\(\$([\d,.]+)K,\s*([\d,.]+)\s*Kg\)', dr.text)
+                    if pairs and len(pairs) >= 2:
+                        trade_text += f"2024年中国出口目的地TOP{min(len(pairs),8)}: "
+                        dests = []
+                        for name, val, qty in pairs[:8]:
+                            dests.append(f"{name.strip()} ${float(val.replace(',','')):,.0f}K")
+                        trade_text += ", ".join(dests)
+                        trade_text += f" [↗]({dest_url})\n"
+            if got_total:
                 continue
         return trade_text if trade_text else ""
     except Exception:
