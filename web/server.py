@@ -267,9 +267,9 @@ WHITE_PAPER_SYSTEM = """你是一个长期跟踪消费品行业的研究者。�
 
 这份白皮书的读者是义乌工厂老板、档口经营者、跨境卖家。写的时候尽量落地：研究材料里有供应链细节就展开（工厂模式、成本结构、渠道玩法），有价格就写具体数字，有工艺就讲清楚。材料里没有的不要硬编。如果一段话全是宏观判断没有具体信息，删掉或重写。
 
-## 写作铁律
-- 每个章节内必须用 ### 小标题拆分成2-4个小节，避免整章一大片文字。小标题用具体判断句，不用"概述""背景"这类空洞词。
-- 禁止用Markdown加粗（**），用 ### 小标题来做视觉分层。
+## 写作铁律（首条最重要）
+- **必须**用 ### 小标题拆分每章为3-5个小节。这是硬性要求，不是建议。每章看到三个以上 ### 才是合格。小标题写具体判断句如"美国占出口六成但利润被品牌方抽走"，不写"市场概况""竞争分析"等空洞词。
+- 禁止Markdown加粗（**），用 ### 做视觉分层。
 - 禁止用破折号（——）。
 - 删掉"随着时代发展""这一趋势值得关注""这说明""因此"等空话和过度总结句。
 - 缩小叙事半径，段落长短交替。
@@ -911,8 +911,8 @@ async def deep_research(req: GenerateRequest):
 不要写任何前言或说明，直接输出报告正文。[↗](URL)链接全部保留。"""
             resp = client.chat.completions.create(
                 model=LLM_MODEL,
-                messages=[{"role": "user", "content": f"{edit_prompt}\n\n{report[:20000]}"}],
-                temperature=0.5, max_tokens=12000,
+                messages=[{"role": "user", "content": f"{edit_prompt}\n\n{report[:30000]}"}],
+                temperature=0.5, max_tokens=16000,
             )
             report = resp.choices[0].message.content
 
