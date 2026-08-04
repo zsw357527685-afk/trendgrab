@@ -549,25 +549,33 @@ def _find_cached(industry: str, mode: str = "quick") -> str | None:
 
 
 def _fetch_trade_data(industry: str) -> str:
-    """获取行业的WITS贸易数据（AI发散搜索多个可能的HS编码）"""
-    hs_results = search_web(f"{industry} HS编码 海关编码 进出口", max_results=6)
-    hs_text = "\n".join([f"{r['title']}\n{r['snippet']}\n{r['url']}" for r in hs_results])
+    """获取行业的WITS贸易数据（AI发散品类→搜HS编码→多个编码查WITS）"""
     try:
+        # 第一步：AI发散品类名称
         resp = client.chat.completions.create(
             model=LLM_MODEL,
-            messages=[{"role": "user", "content": f"「{industry}」在海关进出口中对应哪些品类？列出3-5个最可能的6位HS编码，包含：自身编号、上级大类编号、相近品类编号。每行一个6位数字。如无相关信息输出NONE。\n\n搜索结果：\n{hs_text[:3000]}"}],
+            messages=[{"role": "user", "content": f"「{industry}」属于什么产品类别？列出3-5个相关的、可用于海关查询的具体品类名称（如「{industry}」是产品，则也列出它的上级大类、常用别名、相近品类）。每行一个品类名，不要写HS编码。"}],
             temperature=0.3, max_tokens=100,
         )
-        codes = re.findall(r'\d{6}', resp.choices[0].message.content)
-        if not codes:
+        categories = [c.strip() for c in resp.choices[0].message.content.strip().split("\n") if c.strip()]
+        categories.insert(0, industry)  # 加上原始输入
+
+        # 第二步：每个品类去搜HS编码，收集所有找到的真实编码
+        all_codes = set()
+        for cat in categories[:6]:
+            results = search_web(f"{cat} HS编码 海关编码", max_results=3)
+            for r in results:
+                codes = re.findall(r'\b(\d{6,10})\b', r['title'] + r['snippet'])
+                all_codes.update(c[:6] for c in codes)
+
+        if not all_codes:
             return ""
-        seen = set()
+
+        # 第三步：逐个编码查WITS
         trade_text = ""
-        for hs in codes[:5]:
-            if hs in seen:
-                continue
-            seen.add(hs)
+        for hs in list(all_codes)[:5]:
             got_data = False
+            wits_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/2024/tradeflow/Exports/partner/WLD/product/{hs}"
             for year in [2024, 2023, 2022]:
                 url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs}"
                 r = httpx.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
@@ -578,7 +586,6 @@ def _fetch_trade_data(industry: str) -> str:
                     kg_match = re2.search(r'China.*?(\d[\d,.]*)\s*Kg', r.text)
                     if china_match:
                         if not got_data:
-                            wits_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/2024/tradeflow/Exports/partner/WLD/product/{hs}"
                             trade_text += f"\n【贸易数据 - HS{hs} [↗]({wits_url})】\n"
                             got_data = True
                         val = china_match.group(1).replace(',', '')
