@@ -568,8 +568,8 @@ def _fetch_trade_data(industry: str) -> str:
                 r = httpx.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})  # 4秒超时
                 if r.status_code == 200:
                     import re as re2
-                    china_match = re2.search(r'China.{0,300}?\$?([\d,.]+)', r.text)
-                    world_match = re2.search(r'World</a>.*?\$?([\d,.]+)', r.text, re.DOTALL)
+                    china_match = re2.search(r'China.{0,300}?([\d,.]+)', r.text)
+                    world_match = re2.search(r'World</a>.*?([\d,.]+)', r.text, re.DOTALL)
                     kg_match = re2.search(r'China.*?(\d[\d,.]*)\s*Kg', r.text)
                     if china_match:
                         val = china_match.group(1).replace(',', '')
