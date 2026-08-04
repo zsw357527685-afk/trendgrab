@@ -873,7 +873,7 @@ async def deep_research(req: GenerateRequest):
             deep_tasks[task_id]["phase"] = "stitch"
             intro_resp = client.chat.completions.create(
                 model=LLM_MODEL,
-                messages=[{"role": "user", "content": f"将以下行业报告压缩为300-500字的行业概览，只保留市场规模、增速和最重要的一两个结构特征。不要保留原标题和章节结构，输出纯段落。原文中的 [↗](URL) 引用必须保留，不要删除。\n\n{main_report[:5000]}"}],
+                messages=[{"role": "user", "content": f"为以下行业报告写一段400-600字的行业概览。用3-4个自然段讲清楚：全球市场规模和增速、中国在全球产业链的位置、最值得关注的1-2个结构特征（如消费者变化、渠道变化、技术升级等）、产业地理分布。不要列标题和编号，直接写流畅段落。原文中的 [↗](URL) 引用必须保留。禁止用Markdown加粗。\n\n{main_report[:5000]}"}],
                 temperature=0.5, max_tokens=800,
             )
             overview = intro_resp.choices[0].message.content
