@@ -1077,20 +1077,56 @@ h1{{font-size:24px;font-weight:700}}header p{{color:var(--muted);margin-top:8px;
 </body></html>"""
 
 
-@app.get("/s/{name}")
-async def share_report(name: str):
-    safe = name.replace("..", "").replace("/", "").replace("\\", "")
-    # 查找快速报告或深度报告
+SHARE_MAP_FILE = PROJECT_ROOT / "output" / "share_map.json"
+
+
+def _load_share_map() -> dict:
+    if SHARE_MAP_FILE.exists():
+        return json.loads(SHARE_MAP_FILE.read_text(encoding="utf-8"))
+    return {}
+
+
+def _save_share_map(data: dict):
+    SHARE_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SHARE_MAP_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+@app.get("/s/{sid}")
+async def share_report(sid: str):
+    smap = _load_share_map()
+    entry = smap.get(sid)
+    if not entry:
+        raise HTTPException(404, "分享链接不存在或已过期")
+    path = Path(entry["path"])
+    if not path.exists():
+        raise HTTPException(404, "报告文件已被删除")
+    content = path.read_text(encoding="utf-8")
+    title = entry["industry"]
+    return HTMLResponse(SHARE_HTML.replace("{title}", title).replace("{date}", entry.get("date", "")).replace("{content_json}", json.dumps(content, ensure_ascii=False)))
+
+
+@app.post("/api/share")
+async def create_share(industry: str = "", code: str = ""):
+    """创建分享链接，返回短ID"""
+    if not industry:
+        raise HTTPException(400, "缺少行业名称")
+    safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
+    # 找报告文件
     path = PROJECT_ROOT / "output" / f"report_{safe}.md"
+    mode = "quick"
     if not path.exists():
         deep_path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
         if deep_path.exists():
             path = deep_path
+            mode = "deep"
     if not path.exists():
-        raise HTTPException(404, "报告不存在")
-    content = path.read_text(encoding="utf-8")
-    title = safe.replace("_", " ")
-    return HTMLResponse(SHARE_HTML.replace("{title}", title).replace("{date}", datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")).replace("{content_json}", json.dumps(content, ensure_ascii=False)))
+        raise HTTPException(404, "报告不存在，请先生成")
+    # 生成短ID
+    sid = uuid.uuid4().hex[:8]
+    smap = _load_share_map()
+    smap[sid] = {"industry": industry, "path": str(path), "date": datetime.now().strftime("%Y-%m-%d"), "mode": mode}
+    _save_share_map(smap)
+    return {"url": f"/s/{sid}"}
 
 
 # ── 静态文件 ──
