@@ -625,10 +625,9 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
         _log("cache_hit")
         return cached
 
-    # 获取贸易数据
-    _t1 = time.time()
-    trade_info = _fetch_trade_data(industry)
-    _log("trade_data", f"took {time.time()-_t1:.1f}s, got {len(trade_info)} chars")
+    # 获取贸易数据（暂时关闭，优化中）
+    trade_info = ""  # _fetch_trade_data(industry)
+    # _log("trade_data", f"took {time.time()-_t1:.1f}s, got {len(trade_info)} chars")
 
     # 收集搜索结果
     all_snippets = []
