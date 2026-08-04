@@ -549,34 +549,45 @@ def _find_cached(industry: str, mode: str = "quick") -> str | None:
 
 
 def _fetch_trade_data(industry: str) -> str:
-    """获取行业的WITS贸易数据（如有HS编码匹配）"""
-    hs_results = search_web(f"{industry} HS编码 海关编码 进出口", max_results=4)
+    """获取行业的WITS贸易数据（AI发散搜索多个可能的HS编码）"""
+    hs_results = search_web(f"{industry} HS编码 海关编码 进出口", max_results=6)
     hs_text = "\n".join([f"{r['title']}\n{r['snippet']}\n{r['url']}" for r in hs_results])
-    # AI提取HS编码
     try:
         resp = client.chat.completions.create(
             model=LLM_MODEL,
-            messages=[{"role": "user", "content": f"从以下搜索结果中提取「{industry}」最可能的6位HS编码（只输出数字如670420）。如无明确编码输出NONE。\n\n{hs_text[:2000]}"}],
-            temperature=0.2, max_tokens=20,
+            messages=[{"role": "user", "content": f"「{industry}」在海关进出口中对应哪些品类？列出3-5个最可能的6位HS编码，包含：自身编号、上级大类编号、相近品类编号。每行一个6位数字。如无相关信息输出NONE。\n\n搜索结果：\n{hs_text[:3000]}"}],
+            temperature=0.3, max_tokens=100,
         )
-        hs_code = re.sub(r'[^0-9]', '', resp.choices[0].message.content.strip())[:6]
-        if len(hs_code) >= 4:
-            wits_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/2024/tradeflow/Exports/partner/WLD/product/{hs_code}"
-            trade_text = f"\n\n【贸易数据 - HS{hs_code} [↗]({wits_url})】\n"
+        codes = re.findall(r'\d{6}', resp.choices[0].message.content)
+        if not codes:
+            return ""
+        seen = set()
+        trade_text = ""
+        for hs in codes[:5]:
+            if hs in seen:
+                continue
+            seen.add(hs)
+            got_data = False
             for year in [2024, 2023, 2022]:
-                url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs_code}"
-                r = httpx.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})  # 4秒超时
+                url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs}"
+                r = httpx.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
                 if r.status_code == 200:
                     import re as re2
                     china_match = re2.search(r'China.{0,300}?([\d,.]+)', r.text)
                     world_match = re2.search(r'World</a>.*?([\d,.]+)', r.text, re.DOTALL)
                     kg_match = re2.search(r'China.*?(\d[\d,.]*)\s*Kg', r.text)
                     if china_match:
+                        if not got_data:
+                            wits_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/2024/tradeflow/Exports/partner/WLD/product/{hs}"
+                            trade_text += f"\n【贸易数据 - HS{hs} [↗]({wits_url})】\n"
+                            got_data = True
                         val = china_match.group(1).replace(',', '')
                         kg = kg_match.group(1).replace(',', '') if kg_match else '?'
                         world_val = world_match.group(1).replace(',', '') if world_match else '?'
-                        trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg), 全球${float(world_val):,.0f} [↗]({wits_url})\n"
-            return trade_text if "中国出口" in trade_text else ""
+                        trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg), 全球${float(world_val):,.0f}\n"
+            if got_data:
+                continue
+        return trade_text if trade_text else ""
     except Exception:
         return ""
     return ""
