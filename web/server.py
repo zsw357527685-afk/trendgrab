@@ -613,9 +613,12 @@ def _fetch_trade_data(industry: str) -> str:
 def _gen_report(industry: str, mode: str = "quick") -> str:
     """生成单个行业的报告文本"""
     _t0 = time.time()
+    _log_file = PROJECT_ROOT / "output" / "timing.log"
     def _log(step, detail=""):
         elapsed = time.time() - _t0
-        print(f"[TIMING] {industry} | {step} | {elapsed:.1f}s {detail}")
+        msg = f"{datetime.now().strftime('%H:%M:%S')} | {industry} | {step} | {elapsed:.1f}s | {detail}\n"
+        with open(_log_file, "a", encoding="utf-8") as f:
+            f.write(msg)
 
     cached = _find_cached(industry, mode)
     if cached:
