@@ -195,56 +195,18 @@ def search_web(query: str, max_results: int = 5) -> list[dict]:
     """多引擎搜索，DuckDuckGo 优先，限流时切 Bing"""
     results = []
 
-    # 引擎1: DDGS（新版库）
+    # 引擎1: DDGS（新版库），单次不超5秒
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
             for r in ddgs.text(query, max_results=max_results):
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "snippet": r.get("body", ""),
-                })
-        if len(results) >= 3:
+                results.append({"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")})
+        if len(results) >= 2:
             return results
     except Exception:
         pass
 
-    # 引擎1b: 旧版 duckduckgo_search（兼容）
-    try:
-        from duckduckgo_search import DDGS as OldDDGS
-        with OldDDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "snippet": r.get("body", ""),
-                })
-        if len(results) >= 3:
-            return results
-    except Exception:
-        pass
-
-    # 引擎2: 备用，Bing 搜索
-    try:
-        r = httpx.get(
-            "https://api.duckduckgo.com/",
-            params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-        data = r.json()
-        for item in data.get("RelatedTopics", [])[:max_results]:
-            if isinstance(item, dict) and item.get("FirstURL"):
-                results.append({
-                    "title": item.get("Text", "").split(" - ")[0] if " - " in item.get("Text", "") else item.get("Text", ""),
-                    "url": item.get("FirstURL", ""),
-                    "snippet": item.get("Text", ""),
-                })
-    except Exception:
-        pass
-
-    return results if results else [{"title": "搜索暂时受限", "url": "", "snippet": "请稍后重试"}]
+    return results if results else [{"title": "搜索受限", "url": "", "snippet": "请稍后重试"}]
 
 
 def search_news(query: str, max_results: int = 5) -> list[dict]:
@@ -632,9 +594,15 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
     # 收集搜索结果
     all_snippets = []
     seen_urls = set()
+    # 控制搜索总时间在120秒内
+    search_deadline = time.time() + 120
     for dim_key, dim_queries in DIMENSIONS.items():
-        for q in dim_queries:
-            results = search_web(f"{industry} {q}", max_results=6)
+        if time.time() > search_deadline:
+            break
+        for q in dim_queries[:2]:  # 每个维度只取前2个查询词
+            if time.time() > search_deadline:
+                break
+            results = search_web(f"{industry} {q}", max_results=4)
             for r in results:
                 url = r.get('url', '')
                 if url and url not in seen_urls:
@@ -644,7 +612,9 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
                     seen_urls.add(url)
                     all_snippets.append(f"[{dim_key}] {r['title']}\n{r['snippet']}\n{url}")
 
-    for site in QUALITY_SITES[:6]:  # 只搜6个高质量站
+    for site in QUALITY_SITES[:3]:  # 只搜3个高质量站
+        if time.time() > search_deadline:
+            break
         results = search_web(f"site:{site} {industry}", max_results=3)
         for r in results:
             url = r.get('url', '')
