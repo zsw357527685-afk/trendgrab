@@ -548,11 +548,49 @@ def _find_cached(industry: str, mode: str = "quick") -> str | None:
     return None
 
 
+def _fetch_trade_data(industry: str) -> str:
+    """获取行业的WITS贸易数据（如有HS编码匹配）"""
+    hs_results = search_web(f"{industry} HS编码 海关编码 进出口", max_results=4)
+    hs_text = "\n".join([f"{r['title']}\n{r['snippet']}\n{r['url']}" for r in hs_results])
+    # AI提取HS编码
+    try:
+        resp = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": f"从以下搜索结果中提取「{industry}」最可能的6位HS编码（只输出数字如670420）。如无明确编码输出NONE。\n\n{hs_text[:2000]}"}],
+            temperature=0.2, max_tokens=20,
+        )
+        hs_code = re.sub(r'[^0-9]', '', resp.choices[0].message.content.strip())[:6]
+        if len(hs_code) >= 4:
+            # 抓WITS数据
+            trade_text = f"\n\n【贸易数据 - HS{hs_code}，来源WITS World Bank】\n"
+            for year in [2024, 2023, 2022]:
+                url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs_code}"
+                r = httpx.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200:
+                    # 解析表格数据
+                    import re as re2
+                    china_match = re2.search(r'China.{0,300}?\$?([\d,.]+)', r.text)
+                    world_match = re2.search(r'World</a>.*?\$?([\d,.]+)', r.text, re.DOTALL)
+                    kg_match = re2.search(r'China.*?(\d[\d,.]*)\s*Kg', r.text)
+                    if china_match:
+                        val = china_match.group(1).replace(',', '')
+                        kg = kg_match.group(1).replace(',', '') if kg_match else '?'
+                        world_val = world_match.group(1).replace(',', '') if world_match else '?'
+                        trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg), 全球${float(world_val):,.0f}\n"
+            return trade_text if "中国出口" in trade_text else ""
+    except Exception:
+        return ""
+    return ""
+
+
 def _gen_report(industry: str, mode: str = "quick") -> str:
     """生成单个行业的报告文本"""
     cached = _find_cached(industry, mode)
     if cached:
         return cached
+
+    # 获取贸易数据（如果有）
+    trade_info = _fetch_trade_data(industry)
 
     # 收集搜索结果，直接带 URL
     all_snippets = []
@@ -581,6 +619,8 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
                 all_snippets.append(f"[{dim_key}] {r['title']}\n{r['snippet']}\n{url}")
 
     research_text = "\n\n".join(all_snippets[:200])
+    if trade_info:
+        research_text = trade_info + "\n\n---\n\n" + research_text
     deep_text = ""
     for url in list(seen_urls)[:10]:
         c = fetch_content(url)
@@ -760,6 +800,8 @@ async def deep_research(req: GenerateRequest):
             deep_tasks[task_id]["phase"] = "main"
             main_report = _gen_report(industry, "quick")
             (PROJECT_ROOT / "output" / f"report_{safe}.md").write_text(main_report, encoding="utf-8")
+            # 获取贸易数据（如果行业有对应HS编码）
+            trade_extra = _fetch_trade_data(industry)
             sub_keywords = _extract_keywords(main_report, industry)
             parent_kw = _get_parent(industry)
             all_kws = [industry] + sub_keywords + [parent_kw]  # 主行业 + 3个子 + 1个上级
@@ -797,7 +839,7 @@ async def deep_research(req: GenerateRequest):
                     model=LLM_MODEL,
                     messages=[
                         {"role": "system", "content": ch["system"]},
-                        {"role": "user", "content": "为「" + industry + "」撰写「" + ch['title'] + "」章节。\n\n研究材料：\n" + "\n\n".join(snippets)[:8000] + "\n\n深度页面：\n" + deep[:6000]},
+                        {"role": "user", "content": "为「" + industry + "」撰写「" + ch['title'] + "」章节。\n\n" + (trade_extra or "") + "\n\n研究材料：\n" + "\n\n".join(snippets)[:8000] + "\n\n深度页面：\n" + deep[:6000]},
                     ],
                     temperature=0.7, max_tokens=4000,
                 )
