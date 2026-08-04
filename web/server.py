@@ -22,7 +22,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel
@@ -1050,6 +1050,47 @@ async def admin_report_content(token: str = "", path: str = ""):
     if not p.exists() or not str(p.resolve()).startswith(str((PROJECT_ROOT / "output").resolve())):
         raise HTTPException(404, "报告不存在")
     return {"content": p.read_text(encoding="utf-8")}
+
+
+# ── 分享页面 ─────────────────────────────────────────────
+
+SHARE_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{title}</title>
+<script src="/marked.min.js"></script>
+<style>:root{{--bg:#FAFAF7;--paper:#fff;--ink:#1A1A24;--muted:#8A8898;--border:#E2DDD4;--gold:#B8871A;}}
+*{{margin:0;padding:0;box-sizing:border-box}}body{{font:15px/1.8 system-ui,sans-serif;background:var(--bg);color:var(--ink)}}
+.container{{max-width:860px;margin:0 auto;padding:40px 20px}}
+header{{text-align:center;padding:40px 0;border-bottom:1px solid var(--border);margin-bottom:32px}}
+h1{{font-size:24px;font-weight:700}}header p{{color:var(--muted);margin-top:8px;font-size:14px}}
+.content h2{{font-size:20px;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}}
+.content h3{{font-size:16px;margin:20px 0 8px}}
+.content p{{margin:8px 0}}.content table{{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}}
+.content td,.content th{{border:1px solid var(--border);padding:8px 12px;text-align:left}}.content th{{background:#f5f5f4}}
+.content blockquote{{border-left:3px solid var(--gold);padding:4px 16px;margin:12px 0;color:var(--muted)}}
+.content a{{color:var(--gold)}}footer{{text-align:center;padding:40px;color:var(--muted);font-size:12px}}
+.content{{background:var(--paper);border:1px solid var(--border);border-radius:8px;padding:40px 48px}}
+@media(max-width:640px){{.content{{padding:24px 20px}}}}
+</style></head><body>
+<div class="container"><header><h1>{title}</h1><p>行业白皮书 · trendgrab 生成 · {date}</p></header>
+<div class="content" id="content"></div>
+<footer>Powered by trendgrab · <a href="/">生成你自己的报告</a></footer></div>
+<script>document.getElementById('content').innerHTML=marked.parse({content_json});</script>
+</body></html>"""
+
+
+@app.get("/s/{name}")
+async def share_report(name: str):
+    safe = name.replace("..", "").replace("/", "").replace("\\", "")
+    # 查找快速报告或深度报告
+    path = PROJECT_ROOT / "output" / f"report_{safe}.md"
+    if not path.exists():
+        deep_path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
+        if deep_path.exists():
+            path = deep_path
+    if not path.exists():
+        raise HTTPException(404, "报告不存在")
+    content = path.read_text(encoding="utf-8")
+    title = safe.replace("_", " ")
+    return HTMLResponse(SHARE_HTML.replace("{title}", title).replace("{date}", datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")).replace("{content_json}", json.dumps(content, ensure_ascii=False)))
 
 
 # ── 静态文件 ──

@@ -346,6 +346,7 @@ placeholder="输入行业名称，例如：3D打印饰品、解压玩具、AI硬
 <div>
 <button onclick="downloadReport('md')">下载 MD</button>
 <button id="htmlBtn" onclick="downloadReport('html')">生成 HTML</button>
+<button onclick="shareReport()" style="background:var(--green);color:#fff;border-color:var(--green)">分享</button>
 </div>
 </div>
 
@@ -752,6 +753,7 @@ let r=await fetch('/api/admin/reports?token=trendgrab2026');let data=await r.jso
 if(!data.length){c.innerHTML='<p style="color:var(--muted)">暂无报告</p>';return}
 let html='';data.forEach((d,i)=>{let t=new Date(d.time);let ts=t.getFullYear()+'-'+(t.getMonth()+1).toString().padStart(2,'0')+'-'+t.getDate().toString().padStart(2,'0')+' '+t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');html+='<div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px;cursor:pointer" onclick="loadAdminRpt(\''+encodeURIComponent(d.path)+'\',\''+d.name.replace(/'/g,"\\'")+'\')" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--border)\'"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:11px;color:var(--gold);margin-right:8px">['+d.type+']</span><span style="font-weight:600">'+d.name+'</span></div><span style="font-size:12px;color:var(--muted)">'+ts+' · '+(d.size/1024).toFixed(0)+'KB</span></div></div>'});c.innerHTML=html}
 async function loadAdminRpt(p,n){closeAdmin();let s=document.getElementById('status');s.classList.add('show');document.getElementById('statusText').textContent='加载中…';try{let r=await fetch('/api/admin/report-content?token=trendgrab2026&path='+p);let d=await r.json();currentIndustry=n;currentReport=d.content;document.getElementById('reportTitle').textContent=n+' · 行业白皮书';document.getElementById('reportContent').innerHTML=marked.parse(d.content);document.getElementById('report').classList.add('show')}catch(e){alert(e.message)}s.classList.remove('show')}
+function shareReport(){if(!currentIndustry)return;let safe=currentIndustry.replace(/[\\\/:*?"<>|]/g,'_').substring(0,80);let url=window.location.origin+'/s/'+safe;navigator.clipboard.writeText(url).then(()=>alert('分享链接已复制:\n'+url)).catch(()=>prompt('复制链接:',url));}
 </script>
 
 </body>
