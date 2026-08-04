@@ -587,19 +587,20 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
         _log("cache_hit")
         return cached
 
-    # 获取贸易数据（暂时关闭，优化中）
-    trade_info = ""  # _fetch_trade_data(industry)
-    # _log("trade_data", f"took {time.time()-_t1:.1f}s, got {len(trade_info)} chars")
+    # 获取贸易数据
+    _t1 = time.time()
+    trade_info = _fetch_trade_data(industry)
+    _log("trade_data", f"took {time.time()-_t1:.1f}s, got {len(trade_info)} chars")
 
     # 收集搜索结果
     all_snippets = []
     seen_urls = set()
-    # 控制搜索总时间在120秒内
-    search_deadline = time.time() + 120
+    # 控制搜索总时间在180秒内
+    search_deadline = time.time() + 180
     for dim_key, dim_queries in DIMENSIONS.items():
         if time.time() > search_deadline:
             break
-        for q in dim_queries[:2]:  # 每个维度只取前2个查询词
+        for q in dim_queries[:3]:  # 每个维度取前3个查询词
             if time.time() > search_deadline:
                 break
             results = search_web(f"{industry} {q}", max_results=4)
