@@ -550,32 +550,33 @@ def _find_cached(industry: str, mode: str = "quick") -> str | None:
 
 def _fetch_trade_data(industry: str) -> str:
     """获取行业的WITS贸易数据（AI发散品类→搜HS编码→多个编码查WITS）"""
+    _t0 = time.time()
     try:
-        # 第一步：AI发散品类名称
         resp = client.chat.completions.create(
             model=LLM_MODEL,
-            messages=[{"role": "user", "content": f"「{industry}」属于什么产品类别？列出3-5个相关的、可用于海关查询的具体品类名称（如「{industry}」是产品，则也列出它的上级大类、常用别名、相近品类）。每行一个品类名，不要写HS编码。"}],
+            messages=[{"role": "user", "content": f"「{industry}」属于什么产品类别？列出3-5个相关的、可用于海关查询的具体品类名称。每行一个品类名，不要写HS编码。"}],
             temperature=0.3, max_tokens=100,
         )
         categories = [c.strip() for c in resp.choices[0].message.content.strip().split("\n") if c.strip()]
-        categories.insert(0, industry)  # 加上原始输入
+        categories.insert(0, industry)
+        print(f"[TRADE] {industry} | cats={categories[:3]} | {time.time()-_t0:.1f}s")
 
-        # 第二步：只在主品类和第一个发散品类搜HS编码（省时间）
         all_codes = set()
-        for cat in categories[:2]:  # 只搜2个品类
+        for cat in categories[:2]:
             results = search_web(f"{cat} HS编码 海关编码", max_results=2)
             for r in results:
                 codes = re.findall(r'\b(\d{6,10})\b', r['title'] + r['snippet'])
                 all_codes.update(c[:6] for c in codes)
+        print(f"[TRADE] {industry} | codes={list(all_codes)[:3]} | {time.time()-_t0:.1f}s")
 
         if not all_codes:
+            print(f"[TRADE] {industry} | NO CODES | {time.time()-_t0:.1f}s")
             return ""
 
-        # 第三步：只查最多2个编码 × 2年
         trade_text = ""
         for hs in list(all_codes)[:2]:
             got_total = False
-            for year in [2024, 2023]:  # 只查2年
+            for year in [2024, 2023]:
                 url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs}"
                 r = httpx.get(url, timeout=3, headers={"User-Agent": "Mozilla/5.0"})
                 if r.status_code == 200:
@@ -590,7 +591,6 @@ def _fetch_trade_data(industry: str) -> str:
                         val = china_match.group(1).replace(',', '')
                         kg = kg_match.group(1).replace(',', '') if kg_match else '?'
                         trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg)\n"
-            # 目的地只查一次
             if got_total and year == 2024:
                 dest_url = f"https://wits.worldbank.org/trade/comtrade/en/country/CHN/year/2024/tradeflow/Exports/partner/ALL/product/{hs}"
                 dr = httpx.get(dest_url, timeout=3, headers={"User-Agent": "Mozilla/5.0"})
@@ -601,23 +601,33 @@ def _fetch_trade_data(industry: str) -> str:
                         dests = [f"{n.strip()} ${float(v.replace(',','')):,.0f}K" for n,v,_ in pairs[:5]]
                         trade_text += f"出口目的地TOP5: {', '.join(dests)} [↗]({dest_url})\n"
             if got_total:
-                break  # 一个编码有数据就够了
+                break
+        print(f"[TRADE] {industry} | done {len(trade_text)} chars | {time.time()-_t0:.1f}s")
         return trade_text if trade_text else ""
-    except Exception:
+    except Exception as e:
+        print(f"[TRADE] {industry} | ERROR {e} | {time.time()-_t0:.1f}s")
         return ""
     return ""
 
 
 def _gen_report(industry: str, mode: str = "quick") -> str:
     """生成单个行业的报告文本"""
+    _t0 = time.time()
+    def _log(step, detail=""):
+        elapsed = time.time() - _t0
+        print(f"[TIMING] {industry} | {step} | {elapsed:.1f}s {detail}")
+
     cached = _find_cached(industry, mode)
     if cached:
+        _log("cache_hit")
         return cached
 
-    # 获取贸易数据（如果有）
+    # 获取贸易数据
+    _t1 = time.time()
     trade_info = _fetch_trade_data(industry)
+    _log("trade_data", f"took {time.time()-_t1:.1f}s, got {len(trade_info)} chars")
 
-    # 收集搜索结果，直接带 URL
+    # 收集搜索结果
     all_snippets = []
     seen_urls = set()
     for dim_key, dim_queries in DIMENSIONS.items():
@@ -644,14 +654,18 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
                 all_snippets.append(f"[{dim_key}] {r['title']}\n{r['snippet']}\n{url}")
 
     research_text = "\n\n".join(all_snippets[:200])
+    _log("search_done", f"{len(all_snippets)} snippets, {len(seen_urls)} unique")
     if trade_info:
         research_text = trade_info + "\n\n---\n\n" + research_text
+    _t2 = time.time()
     deep_text = ""
-    for url in list(seen_urls)[:5]:  # 只深读5篇
+    for url in list(seen_urls)[:5]:
         c = fetch_content(url)
         if c:
             deep_text += f"\n{url}\n{c[:3000]}\n---\n"
+    _log("deep_read", f"took {time.time()-_t2:.1f}s")
 
+    _t3 = time.time()
     resp = client.chat.completions.create(
         model=LLM_MODEL,
         messages=[
@@ -661,6 +675,7 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
         temperature=0.7, max_tokens=8000,
     )
     report = resp.choices[0].message.content
+    _log("llm_done", f"took {time.time()-_t3:.1f}s, output {len(report)} chars")
     return report
 
 
