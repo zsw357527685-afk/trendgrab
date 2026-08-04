@@ -562,12 +562,12 @@ def _fetch_trade_data(industry: str) -> str:
         hs_code = re.sub(r'[^0-9]', '', resp.choices[0].message.content.strip())[:6]
         if len(hs_code) >= 4:
             # 抓WITS数据
-            trade_text = f"\n\n【贸易数据 - HS{hs_code}，来源WITS World Bank】\n"
+            wits_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/2024/tradeflow/Exports/partner/WLD/product/{hs_code}"
+            trade_text = f"\n\n【贸易数据 - HS{hs_code} [↗]({wits_url})】\n"
             for year in [2024, 2023, 2022]:
                 url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs_code}"
                 r = httpx.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
                 if r.status_code == 200:
-                    # 解析表格数据
                     import re as re2
                     china_match = re2.search(r'China.{0,300}?\$?([\d,.]+)', r.text)
                     world_match = re2.search(r'World</a>.*?\$?([\d,.]+)', r.text, re.DOTALL)
@@ -576,7 +576,8 @@ def _fetch_trade_data(industry: str) -> str:
                         val = china_match.group(1).replace(',', '')
                         kg = kg_match.group(1).replace(',', '') if kg_match else '?'
                         world_val = world_match.group(1).replace(',', '') if world_match else '?'
-                        trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg), 全球${float(world_val):,.0f}\n"
+                        year_url = f"https://wits.worldbank.org/trade/comtrade/en/country/ALL/year/{year}/tradeflow/Exports/partner/WLD/product/{hs_code}"
+                        trade_text += f"{year}年: 中国出口${float(val):,.0f} ({kg}kg), 全球${float(world_val):,.0f} [↗]({year_url})\n"
             return trade_text if "中国出口" in trade_text else ""
     except Exception:
         return ""
