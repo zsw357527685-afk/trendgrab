@@ -277,7 +277,7 @@ def search_news(query: str, max_results: int = 5) -> list[dict]:
     return results
 
 
-def fetch_content(url: str, timeout: int = 15) -> str:
+def fetch_content(url: str, timeout: int = 8) -> str:
     """抓取页面文本"""
     try:
         r = httpx.get(url, timeout=timeout, follow_redirects=True,
@@ -632,8 +632,8 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
                     seen_urls.add(url)
                     all_snippets.append(f"[{dim_key}] {r['title']}\n{r['snippet']}\n{url}")
 
-    for site in QUALITY_SITES:
-        results = search_web(f"site:{site} {industry}", max_results=4)
+    for site in QUALITY_SITES[:6]:  # 只搜6个高质量站
+        results = search_web(f"site:{site} {industry}", max_results=3)
         for r in results:
             url = r.get('url', '')
             if url and url not in seen_urls:
@@ -647,7 +647,7 @@ def _gen_report(industry: str, mode: str = "quick") -> str:
     if trade_info:
         research_text = trade_info + "\n\n---\n\n" + research_text
     deep_text = ""
-    for url in list(seen_urls)[:10]:
+    for url in list(seen_urls)[:5]:  # 只深读5篇
         c = fetch_content(url)
         if c:
             deep_text += f"\n{url}\n{c[:3000]}\n---\n"
