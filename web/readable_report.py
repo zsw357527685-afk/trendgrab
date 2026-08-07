@@ -391,17 +391,13 @@ def render_html(content: dict[str, Any]) -> str:
         f'<article class="signal signal-{signal["status"]}"><span>{html.escape(signal["name"])}</span><strong>{html.escape(signal["value"])}</strong><p>{html.escape(signal["note"])}</p></article>'
         for signal in content["signals"]
     )
-    heat_html = "".join(
-        f'<article class="heat-item"><div class="heat-circle heat-{item["strength"]}"><b>{_heat_label(item["strength"])}</b><small>资料信号</small></div><h3>{html.escape(item["country"])}</h3><p>{html.escape(item["note"])}</p></article>'
-        for item in content["export_heat"]
-    )
     signal_chart_html = "".join(
         f'<div class="signal-row"><span>{html.escape(signal["name"])}</span><div class="signal-track"><i class="signal-fill signal-{signal["status"]}" style="width:{_signal_score(signal["status"])}%"></i></div><b>{_signal_label(signal["status"])}</b></div>'
         for signal in content["signals"]
     )
-    export_chart_html = "".join(
-        f'<div class="export-row"><span>{html.escape(item["country"])}</span><div><i style="width:{item["strength"] * 20}%"></i></div><b>{_heat_label(item["strength"])}</b></div>'
-        for item in content["export_heat"]
+    validation_html = "".join(
+        f'<article class="validation-item"><span>0{index + 1}</span><div><h3>先验证{html.escape(signal["name"])}</h3><p>当前判断：{html.escape(signal["value"])}。{html.escape(signal["note"])}</p></div></article>'
+        for index, signal in enumerate(content["signals"])
     )
     image_html = "".join(
         f'<figure class="scene scene-{index}"><img src="{html.escape(image["url"], quote=True)}" alt="{html.escape(image.get("title", content["industry"]))}" loading="lazy"><figcaption>{html.escape(image.get("title", "行业参考图"))}</figcaption></figure>'
@@ -438,8 +434,10 @@ def render_html(content: dict[str, Any]) -> str:
 .citations,.no-citation{{display:block;margin-top:13px;font:700 10px 'Roboto Mono',monospace;letter-spacing:.04em}}.citations a{{display:inline-block;margin-right:5px;padding:2px 5px;color:var(--ink);background:var(--lime);border:1px solid var(--ink);text-decoration:none}}.citations a:hover{{background:var(--coral)}}.no-citation{{color:var(--muted)}}.section-pricing .citations a{{background:var(--lime);color:var(--ink)}}.section-pricing .no-citation{{color:rgba(255,255,255,.55)}}.visual-board{{grid-template-columns:.72fr 1.28fr;align-items:center;background:var(--paper-2)}}.visual-copy{{padding:22px 12px 22px 0}}.visual-copy>span{{font:700 10px 'Roboto Mono',monospace;letter-spacing:.1em;color:var(--coral)}}.visual-copy h2{{margin:14px 0;font:900 clamp(28px,4vw,46px)/1 'Noto Serif SC',serif;letter-spacing:-.06em}}.visual-copy p{{margin:0 0 16px;font-size:16px;font-weight:700}}.visual-copy small{{display:block;padding-top:12px;border-top:1px solid var(--ink);font-size:11px;color:var(--muted)}}.visual-gallery{{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}}.visual-gallery .scene{{min-width:0}}.visual-gallery .scene-2{{margin-top:36px}}@media(max-width:680px){{.visual-copy{{padding:0}}.visual-gallery{{grid-template-columns:1fr}}.visual-gallery .scene-2{{margin-top:0}}}}
 </style><style>
 .section-analysis{{max-width:820px;margin:22px 0 0;font-size:16px;line-height:1.9;color:#35342f}}.section-pricing .section-analysis{{color:rgba(255,255,255,.82)}}.source-meta{{display:inline-block;margin-right:7px;padding:1px 5px;background:var(--paper-2);font:700 10px 'Roboto Mono',monospace;color:var(--muted)}}
+</style><style>
+.validation-card{{padding:22px;border:1px solid var(--ink);background:var(--lime);box-shadow:6px 6px 0 var(--ink)}}.validation-card>span{{font:700 10px 'Roboto Mono',monospace;letter-spacing:.1em}}.validation-card>h3{{margin:10px 0;font:900 30px/1 'Noto Serif SC',serif;letter-spacing:-.05em}}.validation-card>p{{margin:0 0 15px;font-size:13px}}.validation-item{{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:11px 0;border-top:1px solid rgba(23,23,19,.4)}}.validation-item>span{{font:700 12px 'Roboto Mono',monospace}}.validation-item h3{{margin:0 0 3px;font-size:14px}}.validation-item p{{margin:0;font-size:12px;line-height:1.55}}
 </style></head><body>
 <nav><div class="wrap"><span>BUSINESS / DECISION BRIEF</span><a href="#sources">查看资料来源 ↓</a></div></nav>
 <header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">三分钟老板决策版 / 收集 {content["source_count"]} 条 · 入模 {content.get("evidence_count", content["source_count"])} 条 · 深读 {content.get("deep_read_count", 0)} 条</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
-<main><section class="signal-band"><div class="wrap"><div class="signals">{signal_html}</div></div></section><section class="data-lenses"><div class="wrap"><span class="eyebrow" style="color:var(--coral)">区域线索 / 公开资料提及</span><h2>资料里出现了哪些区域</h2><div class="heat-grid">{heat_html}</div></div></section><section class="data-board"><article class="data-card"><h3>生意信号仪表</h3><p>根据本次公开资料的初步判断，不代表市场规模或预测。</p>{signal_chart_html}</article><article class="data-card"><h3>区域资料提及</h3><p>按本次公开资料的提及强度整理，不代表出口排名或市场优先级。</p>{export_chart_html}</article></section>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页仅基于本次搜索到的公开网页资料整理；信息不足处已保留“待验证”提示。</p><ol>{sources_html}</ol></div></section></main>
+<main><section class="signal-band"><div class="wrap"><div class="signals">{signal_html}</div></div></section><section class="data-board"><article class="data-card"><h3>三项决策信号</h3><p>这是基于本次公开资料的初步判断，不代表市场规模或预测。</p>{signal_chart_html}</article><article class="validation-card"><span>老板下一步</span><h3>先验证什么</h3><p>不要急着把资料信号当成结论。先用小成本，把下面三件事核实掉。</p>{validation_html}</article></section>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页仅基于本次搜索到的公开网页资料整理；信息不足处已保留“待验证”提示。</p><ol>{sources_html}</ol></div></section></main>
 <footer><div class="wrap">TREND_GRAB · 决策版 · 请在实际下单前核实价格、资质与渠道条件</div></footer></body></html>'''
