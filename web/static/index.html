@@ -142,6 +142,8 @@ z-index:10
 }
 .btns-row{display:flex;gap:12px}
 .btns-row button{flex:1;white-space:nowrap}
+#readableBtn{background:#EF5C4D;box-shadow:3px 3px 0 var(--ink)}
+#readableBtn:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--ink)}
 .search-box input{
 flex:1;
 border:0;
@@ -160,6 +162,7 @@ padding:14px 38px;
 border-radius:6px;
 cursor:pointer
 }
+.btns-row button{padding:14px 14px}
 
 .process{
 margin:40px 0;
@@ -226,6 +229,13 @@ border:1px solid var(--border);
 padding:60px 70px;
 border-radius:6px
 }
+.report-content.readable-view{padding:0;overflow:hidden;background:#f2efe5;border:2px solid var(--ink)}
+.readable-outline{background:linear-gradient(rgba(23,23,19,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(23,23,19,.035) 1px,transparent 1px),#f2efe5;background-size:42px 42px;padding:clamp(24px,5vw,58px)}
+.readable-kicker{display:inline-block;padding:7px 10px;background:var(--ink);color:#fff;font:700 11px 'JetBrains Mono',monospace;letter-spacing:.08em}
+.readable-outline h2{max-width:780px;margin:16px 0 12px!important;border:0!important;padding:0!important;font-size:clamp(30px,5vw,56px)!important;line-height:1.05}
+.readable-decision{max-width:760px;margin:0 0 28px;padding:15px 18px;border-left:5px solid #EF5C4D;background:#fffdf7;font-weight:700}
+.outline-signals{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--ink);margin:26px 0 30px}.outline-signal{min-height:118px;padding:17px;border-right:1px solid var(--ink);background:#fffdf7}.outline-signal:last-child{border:0}.outline-signal em{display:block;font-style:normal;font:700 11px 'JetBrains Mono',monospace;color:var(--muted)}.outline-signal strong{display:block;margin:7px 0;font-size:22px}.outline-signal p{margin:0;color:var(--muted);font-size:12px}.outline-sections{display:grid;grid-template-columns:repeat(2,1fr);gap:0;margin:0 0 32px;border-top:1px solid var(--ink);border-left:1px solid var(--ink)}.outline-section{padding:14px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);background:rgba(255,253,247,.88)}.outline-section small{display:block;color:#EF5C4D;font:700 10px 'JetBrains Mono',monospace}.outline-section b{font-size:15px}.open-readable{display:inline-flex;align-items:center;gap:12px;padding:15px 21px;border:2px solid var(--ink);background:#d9f650;box-shadow:6px 6px 0 var(--ink);color:var(--ink);font-weight:800;cursor:pointer}.open-readable:hover{transform:translate(-2px,-2px);box-shadow:8px 8px 0 var(--ink)}
+@media(max-width:600px){.outline-signals{grid-template-columns:1fr}.outline-signal{border-right:0;border-bottom:1px solid var(--ink)}.outline-signal:last-child{border-bottom:0}.outline-sections{grid-template-columns:1fr}}
 .report-content h1,
 .report-content h2{
 font-family:'Noto Serif SC';
@@ -260,8 +270,11 @@ color:var(--muted)
 @media(max-width:700px){
 .container{padding:0 16px}
 .search-box{flex-direction:column}
+.btns-row{width:100%}
+.btns-row button{padding:13px 8px;font-size:13px}
 .process{grid-template-columns:1fr}
 .report-content{padding:30px 20px}
+.readable-frame{min-height:720px}
 nav{padding:0 16px}
 }
 </style>
@@ -312,6 +325,7 @@ placeholder="输入行业名称，例如：3D打印饰品、解压玩具、AI硬
 
 <div class="btns-row">
 <button id="generateBtn" onclick="generate()">快速研究</button>
+<button id="readableBtn" onclick="generateReadable()">老板决策版</button>
 <button id="deepBtn" onclick="deepResearch()" style="background:var(--ink)">深度研究</button>
 </div>
 </div>
@@ -361,6 +375,39 @@ placeholder="输入行业名称，例如：3D打印饰品、解压玩具、AI硬
 <script>
 let currentIndustry='';
 let currentReport='';
+let currentReadableUrl='';
+let currentReportKind='markdown';
+
+function resetMarkdownMode(){
+currentReadableUrl='';
+currentReportKind='markdown';
+document.getElementById('htmlBtn').textContent='生成 HTML';
+document.getElementById('reportContent').classList.remove('readable-view');
+}
+
+function showReadableOutline(industry, data){
+currentIndustry=industry;
+currentReport='';
+currentReadableUrl=data.url;
+currentReportKind='readable';
+document.getElementById('reportTitle').textContent=industry+' · 老板决策版';
+const content=document.getElementById('reportContent');
+content.classList.add('readable-view');
+content.replaceChildren();
+const outline=data.outline||{};
+const panel=document.createElement('section');
+panel.className='readable-outline';
+const kicker=document.createElement('span'); kicker.className='readable-kicker'; kicker.textContent='老板决策版 / 生成完成'; panel.appendChild(kicker);
+const title=document.createElement('h2'); title.textContent=outline.headline||industry+' 决策速览'; panel.appendChild(title);
+const decision=document.createElement('p'); decision.className='readable-decision'; decision.textContent=outline.decision||'请打开完整页面查看具体判断。'; panel.appendChild(decision);
+const signals=document.createElement('div'); signals.className='outline-signals';
+(outline.signals||[]).forEach(item=>{const cell=document.createElement('article'); cell.className='outline-signal'; const name=document.createElement('em');name.textContent=item.name||'信号';const value=document.createElement('strong');value.textContent=item.value||'待验证';const note=document.createElement('p');note.textContent=item.note||'';cell.append(name,value,note);signals.appendChild(cell)}); panel.appendChild(signals);
+const sections=document.createElement('div'); sections.className='outline-sections';
+(outline.sections||[]).forEach(item=>{const cell=document.createElement('div');cell.className='outline-section';const eyebrow=document.createElement('small');eyebrow.textContent=item.eyebrow||'';const sectionTitle=document.createElement('b');sectionTitle.textContent=item.title||'';cell.append(eyebrow,sectionTitle);sections.appendChild(cell)}); panel.appendChild(sections);
+const open=document.createElement('button');open.className='open-readable';open.type='button';open.textContent='打开完整老板决策版  →';open.addEventListener('click',()=>{window.location.href=data.url});panel.appendChild(open);
+content.appendChild(panel);
+document.getElementById('htmlBtn').textContent='下载 HTML';
+}
 
 async function generate(){
 
@@ -414,6 +461,7 @@ if(!resp.ok)throw new Error(data.detail||'生成失败');
 
 currentIndustry=industry;
 currentReport=data.report;
+resetMarkdownMode();
 
 document.getElementById('reportTitle').textContent=
 industry+' · 行业趋势白皮书';
@@ -450,9 +498,84 @@ btn.disabled=false;
 }
 
 
+async function generateReadable(){
+const industry=document.getElementById('industryInput').value.trim();
+if(!industry)return;
+if(!myCode){alert('请先登录');return;}
+
+const btn=document.getElementById('readableBtn');
+const status=document.getElementById('status');
+const error=document.getElementById('error');
+const report=document.getElementById('report');
+const statusText=document.getElementById('statusText');
+const timerEl=document.getElementById('timer');
+btn.disabled=true;
+status.classList.add('show');
+error.classList.remove('show');
+report.classList.remove('show');
+document.getElementById('eta').textContent='预计 2 分钟';
+
+const started=Date.now();
+const phases=['正在搜索可用资料…','正在判断需求、利润和竞争…','正在排版老板决策版…'];
+let phaseIndex=0;
+statusText.textContent=phases[0];
+const phaseTimer=setInterval(()=>{
+  if(phaseIndex<phases.length-1)statusText.textContent=phases[++phaseIndex];
+},5000);
+const elapsedTimer=setInterval(()=>{
+  const seconds=Math.floor((Date.now()-started)/1000);
+  timerEl.textContent=Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');
+},1000);
+
+try{
+  const resp=await fetch('/api/generate-readable',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({industry,code:myCode})
+  });
+  const body=await resp.text();
+  let data;
+  try{data=JSON.parse(body)}catch(_){throw new Error(body.substring(0,200)||'服务器返回异常')}
+  if(!resp.ok)throw new Error(data.detail||'生成失败');
+
+  showReadableOutline(industry,data);
+  if(data.quick_left!==undefined){
+    document.getElementById('quotaDisplay').textContent='快速'+data.quick_left+'次 · 深度'+myCodeInfo.deep_left+'次';
+  }
+  report.classList.add('show');
+  setTimeout(()=>document.getElementById('reportContent').scrollIntoView({behavior:'smooth',block:'start'}),200);
+}catch(e){
+  error.textContent=e.message;
+  error.classList.add('show');
+}finally{
+  clearInterval(phaseTimer);
+  clearInterval(elapsedTimer);
+  timerEl.textContent='';
+  document.getElementById('eta').textContent='';
+  status.classList.remove('show');
+  btn.disabled=false;
+}
+}
+
+
 async function downloadReport(format){
 
-if(!currentReport)return;
+if(!currentReport && !currentReadableUrl)return;
+
+if(currentReportKind==='readable'){
+  if(format==='md'){
+    alert('老板决策版是图文 HTML 页面，请下载 HTML。');
+    return;
+  }
+  const response=await fetch(currentReadableUrl);
+  if(!response.ok)throw new Error('决策版文件不存在，请重新生成。');
+  let blob=new Blob([await response.text()],{type:'text/html'});
+  let a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=currentIndustry+'_老板决策版.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  return;
+}
 
 if(format==='md'){
 
@@ -566,7 +689,7 @@ let cacheData=await cacheResp.json();
 if(cacheData.exists && cacheData.report){
 statusText.textContent='已有深度报告，直接加载…';
 await new Promise(r=>setTimeout(r,300));
-currentIndustry=industry;currentReport=cacheData.report;
+currentIndustry=industry;currentReport=cacheData.report;resetMarkdownMode();
 document.getElementById('reportTitle').textContent=industry+' · 深度研究白皮书';
 document.getElementById('reportContent').innerHTML=marked.parse(cacheData.report);
 clearInterval(updateTimer);timerEl.textContent='';timerEl.style.display='none';
@@ -595,7 +718,7 @@ clearInterval(pollTimer);clearInterval(updateTimer);
 timerEl.textContent='';timerEl.style.display='none';
 document.getElementById('eta').textContent='';
 status.classList.remove('show');
-currentIndustry=industry;currentReport=d.report;
+currentIndustry=industry;currentReport=d.report;resetMarkdownMode();
 document.getElementById('reportTitle').textContent=industry+' · 深度研究白皮书';
 document.getElementById('reportContent').innerHTML=marked.parse(d.report);
 report.classList.add('show');
@@ -710,7 +833,7 @@ async function loadMyReport(i){
   closeAdmin();
   let d=window._myData[i];
   if(!d.content){alert('报告加载失败，请重新生成');return}
-  currentIndustry=d.industry;currentReport=d.content;
+  currentIndustry=d.industry;currentReport=d.content;resetMarkdownMode();
   document.getElementById('reportTitle').textContent=d.industry+' · 行业白皮书';
   document.getElementById('reportContent').innerHTML=marked.parse(d.content);
   document.getElementById('report').classList.add('show');
@@ -752,8 +875,8 @@ let c=document.getElementById('adminTabContent');c.innerHTML='<p style="color:va
 let r=await fetch('/api/admin/reports?token=trendgrab2026');let data=await r.json();
 if(!data.length){c.innerHTML='<p style="color:var(--muted)">暂无报告</p>';return}
 let html='';data.forEach((d,i)=>{let t=new Date(d.time);let ts=t.getFullYear()+'-'+(t.getMonth()+1).toString().padStart(2,'0')+'-'+t.getDate().toString().padStart(2,'0')+' '+t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');html+='<div style="border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:8px;cursor:pointer" onclick="loadAdminRpt(\''+encodeURIComponent(d.path)+'\',\''+d.name.replace(/'/g,"\\'")+'\')" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--border)\'"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:11px;color:var(--gold);margin-right:8px">['+d.type+']</span><span style="font-weight:600">'+d.name+'</span></div><span style="font-size:12px;color:var(--muted)">'+ts+' · '+(d.size/1024).toFixed(0)+'KB</span></div></div>'});c.innerHTML=html}
-async function loadAdminRpt(p,n){closeAdmin();let s=document.getElementById('status');s.classList.add('show');document.getElementById('statusText').textContent='加载中…';try{let r=await fetch('/api/admin/report-content?token=trendgrab2026&path='+p);let d=await r.json();currentIndustry=n;currentReport=d.content;document.getElementById('reportTitle').textContent=n+' · 行业白皮书';document.getElementById('reportContent').innerHTML=marked.parse(d.content);document.getElementById('report').classList.add('show')}catch(e){alert(e.message)}s.classList.remove('show')}
-async function shareReport(){if(!currentIndustry)return;try{let r=await fetch('/api/share?industry='+encodeURIComponent(currentIndustry)+'&code='+myCode,{method:'POST'});let d=await r.json();if(!r.ok)throw new Error(d.detail||'创建失败');let url=window.location.origin+d.url;navigator.clipboard.writeText(url).then(()=>alert('分享链接已复制:\n'+url)).catch(()=>prompt('复制链接:',url));}catch(e){alert('分享失败: '+e.message)}}
+async function loadAdminRpt(p,n){closeAdmin();let s=document.getElementById('status');s.classList.add('show');document.getElementById('statusText').textContent='加载中…';try{let r=await fetch('/api/admin/report-content?token=trendgrab2026&path='+p);let d=await r.json();currentIndustry=n;currentReport=d.content;resetMarkdownMode();document.getElementById('reportTitle').textContent=n+' · 行业白皮书';document.getElementById('reportContent').innerHTML=marked.parse(d.content);document.getElementById('report').classList.add('show')}catch(e){alert(e.message)}s.classList.remove('show')}
+async function shareReport(){if(!currentIndustry)return;try{let endpoint=currentReportKind==='readable'?'/api/share-readable':'/api/share';let r=await fetch(endpoint+'?industry='+encodeURIComponent(currentIndustry)+'&code='+encodeURIComponent(myCode),{method:'POST'});let d=await r.json();if(!r.ok)throw new Error(d.detail||'创建失败');let url=window.location.origin+d.url;navigator.clipboard.writeText(url).then(()=>alert('分享链接已复制:\n'+url)).catch(()=>prompt('复制链接:',url));}catch(e){alert('分享失败: '+e.message)}}
 </script>
 
 <footer style="text-align:center;padding:20px;color:var(--muted);font-size:11px" id="pageFooter"></footer>

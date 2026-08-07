@@ -27,6 +27,13 @@ from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel
 
+try:
+    from readable_report import generate_content as generate_readable_content
+    from readable_report import render_html as render_readable_html
+except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
+    from web.readable_report import generate_content as generate_readable_content
+    from web.readable_report import render_html as render_readable_html
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -207,6 +214,51 @@ def search_web(query: str, max_results: int = 5) -> list[dict]:
         pass
 
     return results if results else [{"title": "搜索受限", "url": "", "snippet": "请稍后重试"}]
+
+
+def search_images(query: str, max_results: int = 2) -> list[dict]:
+    """为老板决策版取少量行业实景配图；失败时不影响研究正文。"""
+    try:
+        from ddgs import DDGS
+        results = []
+        with DDGS() as ddgs:
+            for item in ddgs.images(query, max_results=max_results, safesearch="moderate"):
+                image_url = str(item.get("thumbnail") or item.get("image") or "").strip()
+                if image_url.startswith(("http://", "https://")):
+                    results.append({
+                        "url": image_url,
+                        "title": str(item.get("title") or "行业参考图"),
+                        "source": str(item.get("url") or ""),
+                    })
+        return results
+    except Exception:
+        return []
+
+
+def _save_readable_images(safe: str, images: list[dict]) -> list[dict]:
+    """将搜索到的小图保存到本地，避免独立页面因外链失效而留白。"""
+    asset_dir = PROJECT_ROOT / "output" / "readable" / "assets" / safe
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for index, image in enumerate(images[:2], start=1):
+        try:
+            response = httpx.get(image["url"], timeout=8, follow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0 (compatible; trend_grab/2.0)"})
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "").lower()
+            if not content_type.startswith("image/") or len(response.content) > 5 * 1024 * 1024:
+                continue
+            suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}.get(content_type.split(";")[0], ".jpg")
+            filename = f"scene-{index}{suffix}"
+            (asset_dir / filename).write_bytes(response.content)
+            saved.append({
+                "url": f"/readable-assets/{safe}/{filename}",
+                "title": image["title"],
+                "source": image["source"],
+            })
+        except Exception:
+            continue
+    return saved
 
 
 def search_news(query: str, max_results: int = 5) -> list[dict]:
@@ -463,6 +515,54 @@ async def generate(req: GenerateRequest):
     _use_code(req.code, "quick", industry, str(report_path))
     ql = c.get("quick_left", 0)
     return {"report": report, "path": str(report_path), "industry": industry, "quick_left": ql if ql < 0 else ql - 1}
+
+
+@app.post("/api/generate-readable")
+async def generate_readable(req: GenerateRequest):
+    """生成老板三分钟决策版；不改变原有白皮书接口与文件。"""
+    industry = req.industry.strip()
+    if not industry:
+        raise HTTPException(400, "请输入行业名称")
+    if not client:
+        raise HTTPException(500, "LLM 未配置。请在 .env 中设置 LLM_API_KEY 和 LLM_BASE_URL。")
+
+    c = _check_code(req.code, "quick")
+    if not c:
+        raise HTTPException(403, "授权码无效或次数已用完")
+
+    try:
+        content = generate_readable_content(client, LLM_MODEL, industry, search_web, fetch_content, _fetch_trade_data)
+        content["images"] = _save_readable_images(safe := re.sub(r'[\\/:*?"<>|]', '_', industry)[:80], search_images(f"{industry} 产品 工厂", 2))
+        readable_html = render_readable_html(content)
+    except ValueError as e:
+        raise HTTPException(502, f"决策版内容格式异常，请重试：{e}")
+    except Exception as e:
+        raise HTTPException(500, f"决策版生成失败：{e}")
+
+    safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
+    readable_dir = PROJECT_ROOT / "output" / "readable"
+    readable_dir.mkdir(parents=True, exist_ok=True)
+    content_path = readable_dir / f"{safe}.json"
+    html_path = readable_dir / f"{safe}.html"
+    content_path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
+    html_path.write_text(readable_html, encoding="utf-8")
+    _use_code(req.code, "quick", industry, str(html_path))
+    ql = c.get("quick_left", 0)
+    return {
+        "industry": industry,
+        "path": str(html_path),
+        "url": f"/readable/{safe}",
+        "outline": {
+            "headline": content["headline"],
+            "decision": content["decision"],
+            "signals": content["signals"],
+            "sections": [
+                {"eyebrow": section["eyebrow"], "title": section["title"]}
+                for section in content["sections"]
+            ],
+        },
+        "quick_left": ql if ql < 0 else ql - 1,
+    }
 
 
 @app.get("/api/reports")
@@ -1183,6 +1283,8 @@ async def share_report(sid: str):
     path = Path(entry["path"])
     if not path.exists():
         raise HTTPException(404, "报告文件已被删除")
+    if entry.get("format") == "readable":
+        return HTMLResponse(path.read_text(encoding="utf-8"))
     content = path.read_text(encoding="utf-8")
     title = entry["industry"]
     return HTMLResponse(SHARE_HTML.replace("{title}", title).replace("{date}", entry.get("date", "")).replace("{content_json}", json.dumps(content, ensure_ascii=False)))
@@ -1210,6 +1312,56 @@ async def create_share(industry: str = "", code: str = ""):
     smap[sid] = {"industry": industry, "path": str(path), "date": datetime.now().strftime("%Y-%m-%d"), "mode": mode}
     _save_share_map(smap)
     return {"url": f"/s/{sid}"}
+
+
+@app.post("/api/share-readable")
+async def create_readable_share(industry: str = "", code: str = ""):
+    """为老板决策版创建独立分享链接，不影响既有白皮书分享。"""
+    if not industry:
+        raise HTTPException(400, "缺少行业名称")
+    auth = _load_auth()
+    if code != ADMIN_CODE and code not in auth:
+        raise HTTPException(403, "授权码无效")
+
+    safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
+    path = PROJECT_ROOT / "output" / "readable" / f"{safe}.html"
+    if not path.exists():
+        raise HTTPException(404, "决策版不存在，请先生成")
+
+    sid = uuid.uuid4().hex[:8]
+    smap = _load_share_map()
+    smap[sid] = {
+        "industry": industry,
+        "path": str(path),
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "mode": "quick",
+        "format": "readable",
+    }
+    _save_share_map(smap)
+    return {"url": f"/s/{sid}"}
+
+
+@app.get("/readable/{name}", response_class=HTMLResponse)
+async def view_readable_report(name: str):
+    """打开已生成的独立老板决策版页面。"""
+    safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80]
+    if name != safe:
+        raise HTTPException(404, "页面不存在")
+    path = PROJECT_ROOT / "output" / "readable" / f"{safe}.html"
+    if not path.exists():
+        raise HTTPException(404, "决策版不存在，请先生成")
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
+@app.get("/readable-assets/{name}/{filename}")
+async def view_readable_asset(name: str, filename: str):
+    safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80]
+    if name != safe or not re.fullmatch(r"scene-[12]\.(?:jpg|png|webp|gif)", filename):
+        raise HTTPException(404, "图片不存在")
+    path = PROJECT_ROOT / "output" / "readable" / "assets" / safe / filename
+    if not path.exists():
+        raise HTTPException(404, "图片不存在")
+    return FileResponse(path)
 
 
 # ── 静态文件 ──
