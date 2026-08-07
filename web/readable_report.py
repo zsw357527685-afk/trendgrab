@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -22,6 +23,17 @@ BLOCKED_SOURCE_MARKERS = (
     "xpicvid", "ctrip", "youtube", "google.", "deepseek.com", "aydvjch",
     "porn", "成人视频", "情色", "hotel", "酒店",
 )
+
+# 沿用快速白皮书的“多维度、多关键词”思路，但收敛到老板决策真正要看的六个问题。
+READABLE_QUERIES = {
+    "行情": ("市场规模 增长 需求 2026", "销量 销售额 热卖 排名", "融资 投资 新品牌 趋势"),
+    "产品": ("热销 产品 爆款 消费者", "新品 发布 众筹 Kickstarter", "定制 化 创意 设计 趋势"),
+    "价格": ("出厂价 批发价 零售价 成本", "毛利率 利润 成本结构", "原材料 物流 生产 成本"),
+    "渠道": ("跨境 电商 平台 渠道", "1688 淘宝 亚马逊 Shopee 销售", "批发 分销 零售 案例"),
+    "买家": ("消费者 画像 年龄 偏好", "采购商 国家 市场 需求", "礼品 企业采购 应用场景"),
+    "风险": ("竞争 价格战 同质化", "政策 标准 认证 合规", "专利 侵权 召回 质量风险"),
+}
+READABLE_QUALITY_SITES = ("36kr.com", "huxiu.com", "jiemian.com", "cifnews.com", "amz123.com", "1688.com")
 
 
 def _industry_keywords(industry: str) -> list[str]:
@@ -77,21 +89,28 @@ def _json_from_response(raw: str) -> dict[str, Any]:
     raise ValueError("模型没有返回可用的结构化内容")
 
 
-def _normalise_cards(value: Any) -> list[dict[str, str]]:
+def _normalise_cards(value: Any, valid_source_ids: set[str]) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
-    cards: list[dict[str, str]] = []
+    cards: list[dict[str, Any]] = []
     for item in value[:4]:
         if isinstance(item, dict):
-            cards.append({"title": _text(item.get("title"), "待确认"), "text": _text(item.get("text"))})
+            references = item.get("sources", [])
+            references = references if isinstance(references, list) else []
+            cards.append({
+                "title": _text(item.get("title"), "待确认"),
+                "text": _text(item.get("text")),
+                "sources": [str(item) for item in references[:2] if str(item) in valid_source_ids],
+            })
         elif isinstance(item, str) and item.strip():
-            cards.append({"title": "要点", "text": item.strip()})
+            cards.append({"title": "要点", "text": item.strip(), "sources": []})
     return cards
 
 
 def normalise_content(payload: dict[str, Any], industry: str, sources: list[dict[str, str]]) -> dict[str, Any]:
     """把模型的轻微格式偏差收敛为渲染器需要的安全、完整结构。"""
     source_count = len(sources)
+    valid_source_ids = {str(source.get("id")) for source in sources}
     sections_by_id = {
         item.get("id"): item for item in payload.get("sections", []) if isinstance(item, dict) and item.get("id")
     }
@@ -104,7 +123,7 @@ def normalise_content(payload: dict[str, Any], industry: str, sources: list[dict
                 "eyebrow": eyebrow,
                 "title": _text(item.get("title"), fallback_title),
                 "summary": _text(item.get("summary")),
-                "cards": _normalise_cards(item.get("cards")) or [{"title": "资料提示", "text": "公开资料暂不足以形成可靠结论。"}],
+                "cards": _normalise_cards(item.get("cards"), valid_source_ids) or [{"title": "资料提示", "text": "公开资料暂不足以形成可靠结论。", "sources": []}],
             }
         )
 
@@ -152,40 +171,46 @@ def generate_content(
     fetch_trade_data: Callable[[str], str],
 ) -> dict[str, Any]:
     """阶段一：搜索资料，再让模型只输出内容 JSON。"""
-    search_plan = (
-        ("行情", "市场规模 增长 需求 最新"),
-        ("产品", "热销 产品 爆款 趋势"),
-        ("价格", "出厂价 批发价 零售价 成本"),
-        ("渠道", "跨境 电商 批发 渠道"),
-        ("买家", "消费者 国家 市场 偏好"),
-        ("风险", "竞争 风险 政策 供应链"),
-    )
     sources: list[dict[str, str]] = []
     seen_urls: set[str] = set()
     industry_keywords = _industry_keywords(industry)
-    for topic, query in search_plan:
-        for result in search_web(f"{industry} {query}", max_results=3):
-            url = str(result.get("url", "")).strip()
-            if (
-                not url
-                or url in seen_urls
-                or not url.startswith(("http://", "https://"))
-                or not _relevant_source(result, industry_keywords)
-            ):
-                continue
-            seen_urls.add(url)
-            sources.append(
-                {
-                    "id": f"S{len(sources) + 1}",
-                    "topic": topic,
-                    "title": _text(result.get("title"), "未命名资料"),
-                    "snippet": _text(result.get("snippet"), "搜索结果未提供摘要"),
-                    "url": url,
-                }
-            )
+    search_deadline = time.monotonic() + 90
+
+    def add_result(topic: str, result: dict[str, str]) -> None:
+        if len(sources) >= 42:
+            return
+        url = str(result.get("url", "")).strip()
+        if (
+            not url
+            or url in seen_urls
+            or not url.startswith(("http://", "https://"))
+            or not _relevant_source(result, industry_keywords)
+        ):
+            return
+        seen_urls.add(url)
+        sources.append({
+            "id": f"S{len(sources) + 1}", "topic": topic,
+            "title": _text(result.get("title"), "未命名资料"),
+            "snippet": _text(result.get("snippet"), "搜索结果未提供摘要"),
+            "url": url,
+        })
+
+    # 沿用快速白皮书：每个维度多组关键词，而不是“一题一搜”。
+    for topic, queries in READABLE_QUERIES.items():
+        for query in queries:
+            if time.monotonic() > search_deadline or len(sources) >= 42:
+                break
+            for result in search_web(f"{industry} {query}", max_results=4):
+                add_result(topic, result)
+
+    for site in READABLE_QUALITY_SITES[:4]:
+        if time.monotonic() > search_deadline or len(sources) >= 42:
+            break
+        for result in search_web(f"site:{site} {industry}", max_results=3):
+            add_result("补充资料", result)
 
     page_text = []
-    for source in sources[:4]:
+    for source in sources[:8]:
         text = fetch_content(source["url"])
         if text:
             page_text.append(f"[{source['id']}] {source['url']}\n{text[:1800]}")
@@ -211,7 +236,7 @@ JSON 必须符合：
   ],
   "export_heat": [{{"country":"国家或区域","strength":1到5,"note":"不超过24字"}}],
   "sections": [
-    {{"id":"market","title":"...","summary":"不超过80字","cards":[{{"title":"...","text":"不超过90字"}}]}},
+    {{"id":"market","title":"...","summary":"不超过80字","cards":[{{"title":"...","text":"不超过90字","sources":["S1","S2"]}}]}},
     {{"id":"products","title":"...","summary":"...","cards":[...]}},
     {{"id":"pricing","title":"...","summary":"...","cards":[...]}},
     {{"id":"channels","title":"...","summary":"...","cards":[...]}},
@@ -220,7 +245,7 @@ JSON 必须符合：
   ]
 }}
 
-每个板块最多 3 张卡片；卡片要写清“能做什么 / 需要验证什么”，避免空泛表述。
+每个板块最多 3 张卡片；卡片要写清“能做什么 / 需要验证什么”，避免空泛表述。每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入 1-2 个真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。
 
 研究资料：
 {evidence[:18000]}"""
@@ -233,9 +258,19 @@ JSON 必须符合：
     return normalise_content(_json_from_response(response.choices[0].message.content), industry, sources)
 
 
-def _render_cards(cards: list[dict[str, str]]) -> str:
+def _render_citations(card: dict[str, Any]) -> str:
+    source_ids = card.get("sources", [])
+    if not source_ids:
+        return '<span class="no-citation">资料待核实</span>'
+    return '<span class="citations">' + " ".join(
+        f'<a href="#source-{html.escape(source_id, quote=True)}">[{html.escape(source_id)}]</a>'
+        for source_id in source_ids
+    ) + '</span>'
+
+
+def _render_cards(cards: list[dict[str, Any]]) -> str:
     return "".join(
-        f'<article class="insight-card"><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p></article>'
+        f'<article class="insight-card"><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>'
         for card in cards
     )
 
@@ -254,31 +289,31 @@ def _render_section(section: dict[str, Any]) -> str:
     if section_id == "market":
         body = '<div class="market-layout"><div class="evidence-stack">' + _render_cards(cards[:2]) + '</div>'
         if len(cards) > 2:
-            body += f'<aside class="market-poster"><small>MARKET / EVIDENCE</small><b>{html.escape(cards[2]["title"])}</b><p>{html.escape(cards[2]["text"])}</p></aside>'
+            body += f'<aside class="market-poster"><small>MARKET / EVIDENCE</small><b>{html.escape(cards[2]["title"])}</b><p>{html.escape(cards[2]["text"])}</p>{_render_citations(cards[2])}</aside>'
         body += '</div>'
     elif section_id == "products":
         body = '<div class="product-notes">' + "".join(
-            f'<article class="product-note note-{index}"><span>0{index + 1}</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p></article>'
+            f'<article class="product-note note-{index}"><span>0{index + 1}</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>'
             for index, card in enumerate(cards)
         ) + '</div>'
     elif section_id == "pricing":
         body = '<div class="price-flow">' + "".join(
-            f'<article class="price-stop"><span>STEP {index + 1}</span><b>{html.escape(card["title"])}</b><p>{html.escape(card["text"])}</p></article>{"<i class=\"flow-arrow\">→</i>" if index < len(cards) - 1 else ""}'
+            f'<article class="price-stop"><span>STEP {index + 1}</span><b>{html.escape(card["title"])}</b><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>{"<i class=\"flow-arrow\">→</i>" if index < len(cards) - 1 else ""}'
             for index, card in enumerate(cards)
         ) + '</div>'
     elif section_id == "channels":
         body = '<div class="channel-route">' + "".join(
-            f'<article class="route-stop"><b>{index + 1:02d}</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p></div></article>'
+            f'<article class="route-stop"><b>{index + 1:02d}</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</div></article>'
             for index, card in enumerate(cards)
         ) + '</div>'
     elif section_id == "buyers":
         body = '<div class="buyer-map">' + "".join(
-            f'<article class="buyer-node"><span>买家线索</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p></article>'
+            f'<article class="buyer-node"><span>买家线索</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>'
             for card in cards
         ) + '</div>'
     else:
         body = '<div class="risk-wall">' + "".join(
-            f'<article class="risk-item"><b>!</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p></div></article>'
+            f'<article class="risk-item"><b>!</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</div></article>'
             for card in cards
         ) + '</div>'
     return _section_frame(section, body)
@@ -321,7 +356,7 @@ def render_html(content: dict[str, Any]) -> str:
     )
     sections_html = "".join(_render_section(section) for section in content["sections"])
     sources_html = "".join(
-        f'<li><a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer">[{html.escape(source["id"])}] {html.escape(source["title"])}</a></li>'
+        f'<li id="source-{html.escape(source["id"], quote=True)}"><a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer">[{html.escape(source["id"])}] {html.escape(source["title"])}</a></li>'
         for source in content["sources"]
     ) or "<li>本次未取得可引用的公开来源。</li>"
     title = html.escape(content["industry"])
@@ -335,6 +370,7 @@ def render_html(content: dict[str, Any]) -> str:
 </style><style>
 .market-layout{{display:grid;grid-template-columns:1.1fr .9fr;gap:22px;margin-top:30px}}.evidence-stack{{display:grid;gap:14px}}.evidence-stack .insight-card{{box-shadow:5px 5px 0 var(--ink)}}.market-poster{{min-height:250px;padding:26px;background:var(--lime);border:1px solid var(--ink);box-shadow:8px 8px 0 var(--coral);display:flex;flex-direction:column;justify-content:flex-end}}.market-poster small,.product-note span,.price-stop span,.buyer-node span{{font:700 10px 'Roboto Mono',monospace;letter-spacing:.08em}}.market-poster b{{display:block;margin:12px 0;font:900 28px/1.05 'Noto Serif SC',serif}}.market-poster p{{margin:0;font-size:14px}}.product-notes{{display:grid;grid-template-columns:1.25fr .75fr .75fr;gap:14px;margin-top:30px}}.product-note{{min-height:215px;padding:20px;border:1px solid var(--ink);background:var(--white)}}.product-note.note-0{{background:var(--sky);box-shadow:8px 8px 0 var(--ink)}}.product-note.note-1{{margin-top:28px;background:var(--lime)}}.product-note.note-2{{margin-bottom:28px;background:var(--white)}}.product-note h3,.route-stop h3,.buyer-node h3,.risk-item h3{{margin:17px 0 10px;font-size:19px;line-height:1.2}}.product-note p,.route-stop p,.buyer-node p,.risk-item p{{margin:0;font-size:13px}}.price-flow{{display:flex;align-items:stretch;gap:10px;margin-top:30px;padding:25px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.3)}}.price-stop{{flex:1;padding:17px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.06)}}.price-stop b{{display:block;margin:11px 0;font-size:18px}}.price-stop p{{margin:0;color:rgba(255,255,255,.72);font-size:13px}}.flow-arrow{{align-self:center;color:var(--lime);font:900 27px/1 'Roboto Mono',monospace}}.channel-route{{display:grid;gap:0;margin-top:30px;border-top:2px solid var(--ink)}}.route-stop{{display:grid;grid-template-columns:80px 1fr;gap:20px;padding:20px 0;border-bottom:1px solid var(--ink)}}.route-stop>b{{display:grid;place-items:center;width:48px;height:48px;background:var(--coral);border:1px solid var(--ink);font:900 17px 'Roboto Mono',monospace}}.route-stop:nth-child(2)>b{{background:var(--lime)}}.route-stop:nth-child(3)>b{{background:var(--sky)}}.buyer-map{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:30px}}.buyer-node{{min-height:210px;padding:22px;border:1px solid var(--ink);border-radius:50% 50% 8px 8px;background:var(--white);box-shadow:5px 5px 0 var(--ink)}}.buyer-node:nth-child(2){{margin-top:38px;background:var(--sky)}}.buyer-node:nth-child(3){{background:var(--lime)}}.risk-wall{{display:grid;gap:0;margin-top:30px;border:1px solid var(--coral);background:#2a211e}}.risk-item{{display:grid;grid-template-columns:64px 1fr;gap:18px;padding:21px;color:var(--white);border-bottom:1px solid rgba(255,255,255,.22)}}.risk-item:last-child{{border-bottom:0}}.risk-item>b{{display:grid;place-items:center;width:42px;height:42px;background:var(--coral);color:var(--ink);border:1px solid var(--ink);font:900 25px/1 'Noto Serif SC',serif}}.risk-item p{{color:rgba(255,255,255,.72)}}
 @media(max-width:680px){{.market-layout,.product-notes,.buyer-map{{grid-template-columns:1fr}}.product-note.note-1,.buyer-node:nth-child(2){{margin-top:0}}.product-note.note-2{{margin-bottom:0}}.price-flow{{display:grid}}.flow-arrow{{justify-self:center;transform:rotate(90deg)}}.market-poster{{min-height:190px}}}}
+.citations,.no-citation{{display:block;margin-top:13px;font:700 10px 'Roboto Mono',monospace;letter-spacing:.04em}}.citations a{{display:inline-block;margin-right:5px;padding:2px 5px;color:var(--ink);background:var(--lime);border:1px solid var(--ink);text-decoration:none}}.citations a:hover{{background:var(--coral)}}.no-citation{{color:var(--muted)}}.section-pricing .citations a{{background:var(--lime);color:var(--ink)}}.section-pricing .no-citation{{color:rgba(255,255,255,.55)}}
 </style></head><body>
 <nav><div class="wrap"><span>BUSINESS / DECISION BRIEF</span><a href="#sources">查看资料来源 ↓</a></div></nav>
 <header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">三分钟老板决策版 / {content["source_count"]} 条公开资料</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
