@@ -107,10 +107,12 @@ def _normalise_cards(value: Any, valid_source_ids: set[str]) -> list[dict[str, A
     return cards
 
 
-def normalise_content(payload: dict[str, Any], industry: str, sources: list[dict[str, str]]) -> dict[str, Any]:
+def normalise_content(
+    payload: dict[str, Any], industry: str, sources: list[dict[str, str]], valid_source_ids: set[str] | None = None
+) -> dict[str, Any]:
     """把模型的轻微格式偏差收敛为渲染器需要的安全、完整结构。"""
     source_count = len(sources)
-    valid_source_ids = {str(source.get("id")) for source in sources}
+    valid_source_ids = valid_source_ids or {str(source.get("id")) for source in sources}
     sections_by_id = {
         item.get("id"): item for item in payload.get("sections", []) if isinstance(item, dict) and item.get("id")
     }
@@ -123,6 +125,8 @@ def normalise_content(payload: dict[str, Any], industry: str, sources: list[dict
                 "eyebrow": eyebrow,
                 "title": _text(item.get("title"), fallback_title),
                 "summary": _text(item.get("summary")),
+                "analysis": _text(item.get("analysis"), "本板块公开资料有限，建议结合平台后台、报价和一线访谈继续验证。"),
+                "sources": [str(source_id) for source_id in item.get("sources", [])[:4] if str(source_id) in valid_source_ids] if isinstance(item.get("sources"), list) else [],
                 "cards": _normalise_cards(item.get("cards"), valid_source_ids) or [{"title": "资料提示", "text": "公开资料暂不足以形成可靠结论。", "sources": []}],
             }
         )
@@ -160,6 +164,43 @@ def normalise_content(payload: dict[str, Any], industry: str, sources: list[dict
         "source_count": source_count,
         "sources": sources[:42],
     }
+
+
+def _select_evidence_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """每个决策板块都有资料进入模型，避免靠列表顺序挤掉后面的维度。"""
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[str] = set()
+    for topic in READABLE_QUERIES:
+        for source in (item for item in sources if item.get("topic") == topic):
+            if len([item for item in selected if item.get("topic") == topic]) >= 4:
+                break
+            selected.append(source)
+            selected_ids.add(source["id"])
+    for source in sources:
+        if len(selected) >= 30:
+            break
+        if source["id"] not in selected_ids:
+            selected.append(source)
+            selected_ids.add(source["id"])
+    return selected
+
+
+def _select_deep_read_sources(evidence_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """深读同样按板块均衡分配，六类问题各至少取一篇。"""
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[str] = set()
+    for topic in READABLE_QUERIES:
+        topic_sources = [item for item in evidence_sources if item.get("topic") == topic]
+        for source in topic_sources[:2]:
+            selected.append(source)
+            selected_ids.add(source["id"])
+    for source in evidence_sources:
+        if len(selected) >= 12:
+            break
+        if source["id"] not in selected_ids:
+            selected.append(source)
+            selected_ids.add(source["id"])
+    return selected[:12]
 
 
 def generate_content(
@@ -209,14 +250,20 @@ def generate_content(
         for result in search_web(f"site:{site} {industry}", max_results=3):
             add_result("补充资料", result)
 
+    evidence_sources = _select_evidence_sources(sources)
+    deep_sources = _select_deep_read_sources(evidence_sources)
+    deep_source_ids = {source["id"] for source in deep_sources}
+    for source in sources:
+        source["deep_read"] = source["id"] in deep_source_ids
+
     page_text = []
-    for source in sources[:8]:
+    for source in deep_sources:
         text = fetch_content(source["url"])
         if text:
-            page_text.append(f"[{source['id']}] {source['url']}\n{text[:1800]}")
+            page_text.append(f"[{source['id']}] {source['url']}\n{text[:1000]}")
     trade_text = fetch_trade_data(industry)
     source_text = "\n\n".join(
-        f"[{source['id']}] [{source['topic']}] {source['title']}\n{source['snippet']}\n{source['url']}" for source in sources
+        f"[{source['id']}] [{source['topic']}] {source['title'][:140]}\n{source['snippet'][:260]}\n{source['url']}" for source in evidence_sources
     )
     evidence = (trade_text + "\n\n" + source_text + "\n\n" + "\n---\n".join(page_text)).strip()
 
@@ -236,7 +283,7 @@ JSON 必须符合：
   ],
   "export_heat": [{{"country":"国家或区域","strength":1到5,"note":"不超过24字"}}],
   "sections": [
-    {{"id":"market","title":"...","summary":"不超过80字","cards":[{{"title":"...","text":"不超过90字","sources":["S1","S2"]}}]}},
+    {{"id":"market","title":"...","summary":"不超过100字","analysis":"180到260字的完整分析段落","sources":["S1","S2"],"cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]}},
     {{"id":"products","title":"...","summary":"...","cards":[...]}},
     {{"id":"pricing","title":"...","summary":"...","cards":[...]}},
     {{"id":"channels","title":"...","summary":"...","cards":[...]}},
@@ -245,17 +292,23 @@ JSON 必须符合：
   ]
 }}
 
-每个板块最多 3 张卡片；卡片要写清“能做什么 / 需要验证什么”，避免空泛表述。每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入 1-2 个真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。
+每个板块必须有一段 180-260 字的 analysis，先讲资料支持的事实，再讲对生意的含义和下一步该验证什么，不能只重复卡片标题。每个板块最多 3 张卡片；卡片要写清“能做什么 / 需要验证什么”，避免空泛表述。section 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。
 
-研究资料：
-{evidence[:18000]}"""
+研究资料（已按六个板块均衡挑选；标有“深读”的资料正文更完整）：
+{evidence}"""
     response = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.35,
         max_tokens=3500,
     )
-    return normalise_content(_json_from_response(response.choices[0].message.content), industry, sources)
+    content = normalise_content(
+        _json_from_response(response.choices[0].message.content), industry, sources,
+        {source["id"] for source in evidence_sources},
+    )
+    content["evidence_count"] = len(evidence_sources)
+    content["deep_read_count"] = len(deep_sources)
+    return content
 
 
 def _render_citations(card: dict[str, Any]) -> str:
@@ -278,7 +331,8 @@ def _render_cards(cards: list[dict[str, Any]]) -> str:
 def _section_frame(section: dict[str, Any], body: str) -> str:
     return f'''<section id="{section["id"]}" class="section section-{section["id"]}">
   <div class="section-head"><span>{html.escape(section["eyebrow"])}</span><h2>{html.escape(section["title"])}</h2></div>
-  <p class="section-summary">{html.escape(section["summary"])}</p>{body}
+  <p class="section-summary">{html.escape(section["summary"])}</p>
+  <p class="section-analysis">{html.escape(section["analysis"])}</p>{_render_citations(section)}{body}
 </section>'''
 
 
@@ -367,7 +421,7 @@ def render_html(content: dict[str, Any]) -> str:
     )
     sections_html = "".join(_render_section(section) for section in content["sections"])
     sources_html = "".join(
-        f'<li id="source-{html.escape(source["id"], quote=True)}"><a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer">[{html.escape(source["id"])}] {html.escape(source["title"])}</a></li>'
+        f'<li id="source-{html.escape(source["id"], quote=True)}"><span class="source-meta">{html.escape(source.get("topic", "资料"))}{" · 深读" if source.get("deep_read") else ""}</span><a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer">[{html.escape(source["id"])}] {html.escape(source["title"])}</a></li>'
         for source in content["sources"]
     ) or "<li>本次未取得可引用的公开来源。</li>"
     title = html.escape(content["industry"])
@@ -382,8 +436,10 @@ def render_html(content: dict[str, Any]) -> str:
 .market-layout{{display:grid;grid-template-columns:1.1fr .9fr;gap:22px;margin-top:30px}}.evidence-stack{{display:grid;gap:14px}}.evidence-stack .insight-card{{box-shadow:5px 5px 0 var(--ink)}}.market-poster{{min-height:250px;padding:26px;background:var(--lime);border:1px solid var(--ink);box-shadow:8px 8px 0 var(--coral);display:flex;flex-direction:column;justify-content:flex-end}}.market-poster small,.product-note span,.price-stop span,.buyer-node span{{font:700 10px 'Roboto Mono',monospace;letter-spacing:.08em}}.market-poster b{{display:block;margin:12px 0;font:900 28px/1.05 'Noto Serif SC',serif}}.market-poster p{{margin:0;font-size:14px}}.product-notes{{display:grid;grid-template-columns:1.25fr .75fr .75fr;gap:14px;margin-top:30px}}.product-note{{min-height:215px;padding:20px;border:1px solid var(--ink);background:var(--white)}}.product-note.note-0{{background:var(--sky);box-shadow:8px 8px 0 var(--ink)}}.product-note.note-1{{margin-top:28px;background:var(--lime)}}.product-note.note-2{{margin-bottom:28px;background:var(--white)}}.product-note h3,.route-stop h3,.buyer-node h3,.risk-item h3{{margin:17px 0 10px;font-size:19px;line-height:1.2}}.product-note p,.route-stop p,.buyer-node p,.risk-item p{{margin:0;font-size:13px}}.price-flow{{display:flex;align-items:stretch;gap:10px;margin-top:30px;padding:25px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.3)}}.price-stop{{flex:1;padding:17px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.06)}}.price-stop b{{display:block;margin:11px 0;font-size:18px}}.price-stop p{{margin:0;color:rgba(255,255,255,.72);font-size:13px}}.flow-arrow{{align-self:center;color:var(--lime);font:900 27px/1 'Roboto Mono',monospace}}.channel-route{{display:grid;gap:0;margin-top:30px;border-top:2px solid var(--ink)}}.route-stop{{display:grid;grid-template-columns:80px 1fr;gap:20px;padding:20px 0;border-bottom:1px solid var(--ink)}}.route-stop>b{{display:grid;place-items:center;width:48px;height:48px;background:var(--coral);border:1px solid var(--ink);font:900 17px 'Roboto Mono',monospace}}.route-stop:nth-child(2)>b{{background:var(--lime)}}.route-stop:nth-child(3)>b{{background:var(--sky)}}.buyer-map{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:30px}}.buyer-node{{min-height:210px;padding:22px;border:1px solid var(--ink);border-radius:50% 50% 8px 8px;background:var(--white);box-shadow:5px 5px 0 var(--ink)}}.buyer-node:nth-child(2){{margin-top:38px;background:var(--sky)}}.buyer-node:nth-child(3){{background:var(--lime)}}.risk-wall{{display:grid;gap:0;margin-top:30px;border:1px solid var(--coral);background:#2a211e}}.risk-item{{display:grid;grid-template-columns:64px 1fr;gap:18px;padding:21px;color:var(--white);border-bottom:1px solid rgba(255,255,255,.22)}}.risk-item:last-child{{border-bottom:0}}.risk-item>b{{display:grid;place-items:center;width:42px;height:42px;background:var(--coral);color:var(--ink);border:1px solid var(--ink);font:900 25px/1 'Noto Serif SC',serif}}.risk-item p{{color:rgba(255,255,255,.72)}}
 @media(max-width:680px){{.market-layout,.product-notes,.buyer-map{{grid-template-columns:1fr}}.product-note.note-1,.buyer-node:nth-child(2){{margin-top:0}}.product-note.note-2{{margin-bottom:0}}.price-flow{{display:grid}}.flow-arrow{{justify-self:center;transform:rotate(90deg)}}.market-poster{{min-height:190px}}}}
 .citations,.no-citation{{display:block;margin-top:13px;font:700 10px 'Roboto Mono',monospace;letter-spacing:.04em}}.citations a{{display:inline-block;margin-right:5px;padding:2px 5px;color:var(--ink);background:var(--lime);border:1px solid var(--ink);text-decoration:none}}.citations a:hover{{background:var(--coral)}}.no-citation{{color:var(--muted)}}.section-pricing .citations a{{background:var(--lime);color:var(--ink)}}.section-pricing .no-citation{{color:rgba(255,255,255,.55)}}.visual-board{{grid-template-columns:.72fr 1.28fr;align-items:center;background:var(--paper-2)}}.visual-copy{{padding:22px 12px 22px 0}}.visual-copy>span{{font:700 10px 'Roboto Mono',monospace;letter-spacing:.1em;color:var(--coral)}}.visual-copy h2{{margin:14px 0;font:900 clamp(28px,4vw,46px)/1 'Noto Serif SC',serif;letter-spacing:-.06em}}.visual-copy p{{margin:0 0 16px;font-size:16px;font-weight:700}}.visual-copy small{{display:block;padding-top:12px;border-top:1px solid var(--ink);font-size:11px;color:var(--muted)}}.visual-gallery{{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}}.visual-gallery .scene{{min-width:0}}.visual-gallery .scene-2{{margin-top:36px}}@media(max-width:680px){{.visual-copy{{padding:0}}.visual-gallery{{grid-template-columns:1fr}}.visual-gallery .scene-2{{margin-top:0}}}}
+</style><style>
+.section-analysis{{max-width:820px;margin:22px 0 0;font-size:16px;line-height:1.9;color:#35342f}}.section-pricing .section-analysis{{color:rgba(255,255,255,.82)}}.source-meta{{display:inline-block;margin-right:7px;padding:1px 5px;background:var(--paper-2);font:700 10px 'Roboto Mono',monospace;color:var(--muted)}}
 </style></head><body>
 <nav><div class="wrap"><span>BUSINESS / DECISION BRIEF</span><a href="#sources">查看资料来源 ↓</a></div></nav>
-<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">三分钟老板决策版 / {content["source_count"]} 条公开资料</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
+<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">三分钟老板决策版 / 收集 {content["source_count"]} 条 · 入模 {content.get("evidence_count", content["source_count"])} 条 · 深读 {content.get("deep_read_count", 0)} 条</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
 <main><section class="signal-band"><div class="wrap"><div class="signals">{signal_html}</div></div></section><section class="data-lenses"><div class="wrap"><span class="eyebrow" style="color:var(--coral)">区域线索 / 公开资料提及</span><h2>资料里出现了哪些区域</h2><div class="heat-grid">{heat_html}</div></div></section><section class="data-board"><article class="data-card"><h3>生意信号仪表</h3><p>根据本次公开资料的初步判断，不代表市场规模或预测。</p>{signal_chart_html}</article><article class="data-card"><h3>区域资料提及</h3><p>按本次公开资料的提及强度整理，不代表出口排名或市场优先级。</p>{export_chart_html}</article></section>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页仅基于本次搜索到的公开网页资料整理；信息不足处已保留“待验证”提示。</p><ol>{sources_html}</ol></div></section></main>
 <footer><div class="wrap">TREND_GRAB · 决策版 · 请在实际下单前核实价格、资质与渠道条件</div></footer></body></html>'''
