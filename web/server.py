@@ -37,7 +37,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.9.4")
+app = FastAPI(title="trend_grab", version="2.10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -217,7 +217,7 @@ def search_web(query: str, max_results: int = 5) -> list[dict]:
 
 
 def search_images(query: str, max_results: int = 2) -> list[dict]:
-    """为老板决策版取少量行业实景配图；失败时不影响研究正文。"""
+    """为行业研判页取少量行业实景配图；失败时不影响研究正文。"""
     try:
         from ddgs import DDGS
         results = []
@@ -519,7 +519,7 @@ async def generate(req: GenerateRequest):
 
 @app.post("/api/generate-readable")
 async def generate_readable(req: GenerateRequest):
-    """生成老板三分钟决策版；不改变原有白皮书接口与文件。"""
+    """生成行业研判页；不改变原有白皮书接口与文件。"""
     industry = req.industry.strip()
     if not industry:
         raise HTTPException(400, "请输入行业名称")
@@ -1316,7 +1316,7 @@ async def create_share(industry: str = "", code: str = ""):
 
 @app.post("/api/share-readable")
 async def create_readable_share(industry: str = "", code: str = ""):
-    """为老板决策版创建独立分享链接，不影响既有白皮书分享。"""
+    """为行业研判页创建独立分享链接，不影响既有白皮书分享。"""
     if not industry:
         raise HTTPException(400, "缺少行业名称")
     auth = _load_auth()
@@ -1343,7 +1343,7 @@ async def create_readable_share(industry: str = "", code: str = ""):
 
 @app.get("/readable/{name}", response_class=HTMLResponse)
 async def view_readable_report(name: str):
-    """打开已生成的独立老板决策版页面。"""
+    """打开已生成的独立行业研判页。"""
     safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80]
     if name != safe:
         raise HTTPException(404, "页面不存在")
@@ -1370,7 +1370,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.9.4", "date": "2026-08-07"}
+    return {"version": "2.10.0", "date": "2026-08-07"}
 
 
 # ── 静态文件 ──

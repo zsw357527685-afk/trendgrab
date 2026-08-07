@@ -1,4 +1,4 @@
-"""老板决策版：将搜索结果整理为结构化内容，再渲染为固定 HTML 页面。"""
+"""行业研判页：将公开搜索资料整理为结构化内容，再渲染为独立 HTML 页面。"""
 
 from __future__ import annotations
 
@@ -11,12 +11,13 @@ from typing import Any
 
 
 SECTION_BLUEPRINT = (
-    ("market", "01 / 行情速览", "这门生意现在值不值得看"),
-    ("products", "02 / 什么款好卖", "从产品特征找机会"),
-    ("pricing", "03 / 价格拆解", "钱在链路的哪一段"),
-    ("channels", "04 / 渠道通路", "货怎样走到消费者手里"),
-    ("buyers", "05 / 谁在下单", "谁会买，以及为什么买"),
-    ("risks", "06 / 注意什么", "窗口、风险与下一步"),
+    ("facts", "01 / 事实线索", "这个行业现在发生了什么"),
+    ("business_map", "02 / 生意构成", "这个行业由哪些产品、场景或业务组成"),
+    ("market_samples", "03 / 市场样本", "公开资料里的人在怎么做"),
+    ("factory_relevance", "04 / 工厂相关", "制造、供应链与进入门槛线索"),
+    ("hypotheses", "05 / 值得验证", "公开资料支持哪些假设，而非结论"),
+    ("uncertainty", "06 / 不能下结论", "哪些信息不足、矛盾或需要警惕"),
+    ("next_questions", "07 / 下一步要问", "继续调研时最该补的资料"),
 )
 
 BLOCKED_SOURCE_MARKERS = (
@@ -24,14 +25,13 @@ BLOCKED_SOURCE_MARKERS = (
     "porn", "成人视频", "情色", "hotel", "酒店",
 )
 
-# 沿用快速白皮书的“多维度、多关键词”思路，但收敛到老板决策真正要看的六个问题。
+# 搜索的是“资料类型”，不是预设某个行业一定有增长、爆款或出口机会。
 READABLE_QUERIES = {
-    "行情": ("市场规模 增长 需求 2026", "销量 销售额 热卖 排名", "融资 投资 新品牌 趋势"),
-    "产品": ("热销 产品 爆款 消费者", "新品 发布 众筹 Kickstarter", "定制 化 创意 设计 趋势"),
-    "价格": ("出厂价 批发价 零售价 成本", "毛利率 利润 成本结构", "原材料 物流 生产 成本"),
-    "渠道": ("跨境 电商 平台 渠道", "1688 淘宝 亚马逊 Shopee 销售", "批发 分销 零售 案例"),
-    "买家": ("消费者 画像 年龄 偏好", "采购商 国家 市场 需求", "礼品 企业采购 应用场景"),
-    "风险": ("竞争 价格战 同质化", "政策 标准 认证 合规", "专利 侵权 召回 质量风险"),
+    "事实线索": ("2026 最新 新闻 发布 动态", "市场 数据 报告 统计", "政策 标准 监管"),
+    "产品与业务": ("产品 类型 应用 场景 案例", "新品 发布 评测 众筹", "解决方案 服务 商业模式"),
+    "市场样本": ("品牌 平台 卖家 案例", "渠道 上架 销售 采购", "用户 客户 评价 需求"),
+    "制造线索": ("供应链 工厂 OEM ODM", "材料 工艺 零部件 生产", "认证 质量 专利 合规"),
+    "争议与限制": ("风险 问题 投诉 召回", "竞争 价格战 同质化", "政策 限制 侵权 失败案例"),
 }
 READABLE_QUALITY_SITES = ("36kr.com", "huxiu.com", "jiemian.com", "cifnews.com", "amz123.com", "1688.com")
 
@@ -113,12 +113,21 @@ def normalise_content(
     """把模型的轻微格式偏差收敛为渲染器需要的安全、完整结构。"""
     source_count = len(sources)
     valid_source_ids = valid_source_ids or {str(source.get("id")) for source in sources}
-    sections_by_id = {
-        item.get("id"): item for item in payload.get("sections", []) if isinstance(item, dict) and item.get("id")
-    }
+    blueprint_by_id = {section_id: (eyebrow, fallback_title) for section_id, eyebrow, fallback_title in SECTION_BLUEPRINT}
     sections = []
-    for section_id, eyebrow, fallback_title in SECTION_BLUEPRINT:
-        item = sections_by_id.get(section_id, {})
+    seen_section_ids: set[str] = set()
+    # 模型按“资料实际支持的顺序”返回 4–7 个模块；不强制把所有模块填满。
+    for item in payload.get("sections", []) if isinstance(payload.get("sections"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        section_id = str(item.get("id", ""))
+        if section_id not in blueprint_by_id or section_id in seen_section_ids:
+            continue
+        eyebrow, fallback_title = blueprint_by_id[section_id]
+        has_substance = item.get("summary") or item.get("analysis") or item.get("cards")
+        if not has_substance:
+            continue
+        seen_section_ids.add(section_id)
         sections.append(
             {
                 "id": section_id,
@@ -131,8 +140,16 @@ def normalise_content(
             }
         )
 
+    if not sections:
+        sections = [{
+            "id": "uncertainty", "eyebrow": "06 / 不能下结论", "title": "公开资料暂不足以形成行业判断",
+            "summary": "本次搜索没有取得足够可靠且相关的公开资料。",
+            "analysis": "不建议把搜索摘要当作经营结论。下一步应补充可核实的产品链接、供应商报价、平台后台或客户访谈资料。",
+            "sources": [], "cards": [{"title": "资料提示", "text": "资料不足，建议继续核实。", "sources": []}],
+        }]
+
     raw_signals = payload.get("signals", [])
-    signal_defaults = (("需求", "yellow"), ("利润", "yellow"), ("竞争", "red"))
+    signal_defaults = (("证据密度", "yellow"), ("制造相关度", "yellow"), ("信息缺口", "red"))
     signals = []
     for index, (name, status) in enumerate(signal_defaults):
         item = raw_signals[index] if isinstance(raw_signals, list) and index < len(raw_signals) and isinstance(raw_signals[index], dict) else {}
@@ -155,9 +172,9 @@ def normalise_content(
 
     return {
         "industry": industry,
-        "headline": _text(payload.get("headline"), f"{industry}，先看生意再看热闹"),
-        "subheadline": _text(payload.get("subheadline"), "给工厂、档口和跨境卖家的三分钟决策速览"),
-        "decision": _text(payload.get("decision"), "先小范围验证需求、价格和渠道，再决定是否投入。"),
+        "headline": _text(payload.get("headline"), f"{industry}：公开资料能说明什么，仍缺什么"),
+        "subheadline": _text(payload.get("subheadline"), "基于本次检索到的公开网页线索整理，不替代报价、客户访谈或经营数据"),
+        "decision": _text(payload.get("decision"), "当前资料可用于形成初步认识，但不足以替代实际报价、平台后台数据或一线客户验证。"),
         "signals": signals,
         "export_heat": heat[:5],
         "sections": sections,
@@ -267,34 +284,30 @@ def generate_content(
     )
     evidence = (trade_text + "\n\n" + source_text + "\n\n" + "\n---\n".join(page_text)).strip()
 
-    prompt = f"""你是服务于工厂老板、档口经营者和跨境卖家的行业分析师。请根据以下公开资料，为「{industry}」制作一份三分钟可读的“老板决策版”。
+    prompt = f"""你是行业公开资料整合分析师。请根据以下公开资料，为「{industry}」制作一份给工厂老板阅读的“行业研判页”。
 
-只能使用资料中明确出现的事实和链接；不确定就写“资料不足，建议验证”，绝不能编造数字、国家、产品、价格或来源。不要输出 Markdown，不要输出解释，只输出一个合法 JSON 对象。
+这不是经营指令书：你不了解该工厂的真实成本、产能、客户和报价，不能替老板下“应该投产/应该赚钱”的结论。你的任务是把已搜到的公开资料整理为：能确认的事实、这些事实可能意味着什么、以及还不能下结论的地方。
+
+只能使用资料中明确出现的事实和链接；不确定就写“资料不足，建议验证”，绝不能编造数字、国家、产品、价格、销量、利润或来源。不要输出 Markdown，不要输出解释，只输出一个合法 JSON 对象。
 
 JSON 必须符合：
 {{
-  "headline": "一句有判断的标题",
-  "subheadline": "一句副标题",
-  "decision": "一句可执行建议",
+  "headline": "一句基于资料的研判标题",
+  "subheadline": "一句说明本页覆盖范围的副标题",
+  "decision": "一句当前研究结论：说明能确认什么和主要限制",
   "signals": [
-    {{"name":"需求","status":"green|yellow|red","value":"偏热/待验证等","note":"不超过32字"}},
-    {{"name":"利润","status":"green|yellow|red","value":"...","note":"..."}},
-    {{"name":"竞争","status":"green|yellow|red","value":"...","note":"..."}}
+    {{"name":"证据密度","status":"green|yellow|red","value":"较充分/有限/不足","note":"不超过32字"}},
+    {{"name":"制造相关度","status":"green|yellow|red","value":"直接相关/部分相关/线索少","note":"..."}},
+    {{"name":"信息缺口","status":"green|yellow|red","value":"较少/较多/很大","note":"..."}}
   ],
-  "export_heat": [{{"country":"国家或区域","strength":1到5,"note":"不超过24字"}}],
   "sections": [
-    {{"id":"market","title":"...","summary":"不超过100字","analysis":"180到260字的完整分析段落","sources":["S1","S2"],"cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]}},
-    {{"id":"products","title":"...","summary":"...","cards":[...]}},
-    {{"id":"pricing","title":"...","summary":"...","cards":[...]}},
-    {{"id":"channels","title":"...","summary":"...","cards":[...]}},
-    {{"id":"buyers","title":"...","summary":"...","cards":[...]}},
-    {{"id":"risks","title":"...","summary":"...","cards":[...]}}
+    {{"id":"facts|business_map|market_samples|factory_relevance|hypotheses|uncertainty|next_questions","title":"...","summary":"不超过100字","analysis":"180到260字的完整分析段落","sources":["S1","S2"],"cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]}}
   ]
 }}
 
-每个板块必须有一段 180-260 字的 analysis，先讲资料支持的事实，再讲对生意的含义和下一步该验证什么，不能只重复卡片标题。每个板块最多 3 张卡片；卡片要写清“能做什么 / 需要验证什么”，避免空泛表述。section 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲资料支持的事实，再说明它可能意味着什么或还不能说明什么，不能重复卡片标题。每个板块最多 3 张卡片。section 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。
 
-研究资料（已按六个板块均衡挑选；标有“深读”的资料正文更完整）：
+研究资料（已按资料类型均衡挑选；标有“深读”的资料正文更完整）：
 {evidence}"""
     response = client.chat.completions.create(
         model=model,
@@ -340,32 +353,32 @@ def _render_section(section: dict[str, Any]) -> str:
     """六个问题使用六种信息布局，避免整页都是同一种卡片。"""
     cards = section["cards"]
     section_id = section["id"]
-    if section_id == "market":
+    if section_id == "facts":
         body = '<div class="market-layout"><div class="evidence-stack">' + _render_cards(cards[:2]) + '</div>'
         if len(cards) > 2:
             body += f'<aside class="market-poster"><small>MARKET / EVIDENCE</small><b>{html.escape(cards[2]["title"])}</b><p>{html.escape(cards[2]["text"])}</p>{_render_citations(cards[2])}</aside>'
         body += '</div>'
-    elif section_id == "products":
+    elif section_id == "business_map":
         body = '<div class="product-notes">' + "".join(
             f'<article class="product-note note-{index}"><span>0{index + 1}</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id == "pricing":
+    elif section_id == "factory_relevance":
         body = '<div class="price-flow">' + "".join(
             f'<article class="price-stop"><span>STEP {index + 1}</span><b>{html.escape(card["title"])}</b><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>{"<i class=\"flow-arrow\">→</i>" if index < len(cards) - 1 else ""}'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id == "channels":
+    elif section_id == "market_samples":
         body = '<div class="channel-route">' + "".join(
             f'<article class="route-stop"><b>{index + 1:02d}</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</div></article>'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id == "buyers":
+    elif section_id == "hypotheses":
         body = '<div class="buyer-map">' + "".join(
             f'<article class="buyer-node"><span>买家线索</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</article>'
             for card in cards
         ) + '</div>'
-    else:
+    else:  # uncertainty / next_questions
         body = '<div class="risk-wall">' + "".join(
             f'<article class="risk-item"><b>!</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card)}</div></article>'
             for card in cards
@@ -378,7 +391,7 @@ def _signal_score(status: str) -> int:
 
 
 def _signal_label(status: str) -> str:
-    return {"green": "积极信号", "yellow": "待验证", "red": "压力较高"}.get(status, "资料不足")
+    return {"green": "线索较充分", "yellow": "需要核实", "red": "缺口明显"}.get(status, "资料不足")
 
 
 def _heat_label(strength: int) -> str:
@@ -396,7 +409,7 @@ def render_html(content: dict[str, Any]) -> str:
         for signal in content["signals"]
     )
     validation_html = "".join(
-        f'<article class="validation-item"><span>0{index + 1}</span><div><h3>先验证{html.escape(signal["name"])}</h3><p>当前判断：{html.escape(signal["value"])}。{html.escape(signal["note"])}</p></div></article>'
+        f'<article class="validation-item"><span>0{index + 1}</span><div><h3>{html.escape(signal["name"])}</h3><p>当前状态：{html.escape(signal["value"])}。{html.escape(signal["note"])}</p></div></article>'
         for index, signal in enumerate(content["signals"])
     )
     image_html = "".join(
@@ -404,11 +417,11 @@ def render_html(content: dict[str, Any]) -> str:
         for index, image in enumerate(content.get("images", [])[:2], start=1)
         if isinstance(image, dict) and image.get("url")
     )
-    product_section = next((section for section in content["sections"] if section["id"] == "products"), None)
+    product_section = next((section for section in content["sections"] if section["id"] == "business_map"), None)
     visual_context = ""
     if product_section:
         visual_context = (
-            f'<div class="visual-copy"><span>PRODUCT / VISUAL CONTEXT</span><h2>{html.escape(product_section["title"])}</h2>'
+            f'<div class="visual-copy"><span>VISUAL / CONTEXT</span><h2>{html.escape(product_section["title"])}</h2>'
             f'<p>{html.escape(product_section["summary"])}</p><small>图片用于理解行业产品与场景，不作为销量、价格或市场规模证据。</small></div>'
         )
     visual_board_html = (
@@ -424,7 +437,7 @@ def render_html(content: dict[str, Any]) -> str:
     headline = html.escape(content["headline"])
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title}｜老板决策版</title>
+<title>{title}｜行业研判页</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@600;700;900&family=Roboto+Mono:wght@500;700&display=swap');
 :root{{--paper:#f2efe5;--paper-2:#e8e3d6;--white:#fffdf7;--ink:#171713;--coral:#ff6846;--lime:#d9f650;--sun:#ffc933;--sky:#9fd8ff;--line:#1c1c1c;--muted:#67665f}}*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;color:var(--ink);font-family:'Noto Sans SC',sans-serif;line-height:1.65;background:radial-gradient(circle at 12% 6%,rgba(217,246,80,.28),transparent 18rem),linear-gradient(rgba(23,23,19,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(23,23,19,.035) 1px,transparent 1px),var(--paper);background-size:auto,48px 48px,48px 48px,auto}}.wrap{{max-width:1020px;margin:auto;padding:0 38px}}nav{{position:sticky;top:0;z-index:5;background:rgba(242,239,229,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--ink)}}nav .wrap{{min-height:58px;display:flex;align-items:center;justify-content:space-between;font:700 12px 'Roboto Mono',monospace;letter-spacing:.08em}}nav a{{color:inherit;text-decoration:none}}.hero{{position:relative;padding:92px 0 68px;overflow:hidden;border-bottom:1px solid var(--ink)}}.hero::before{{content:'TREND';position:absolute;right:-1vw;bottom:-1.5rem;color:rgba(23,23,19,.045);font:900 clamp(6rem,17vw,14rem)/.75 'Noto Sans SC',sans-serif;pointer-events:none}}.eyebrow{{color:var(--ink);font:700 12px 'Roboto Mono',monospace;letter-spacing:.12em}}h1{{margin:14px 0 22px;font:900 clamp(42px,7vw,76px)/.96 'Noto Serif SC',serif;letter-spacing:-.065em;max-width:760px}}h1::after{{display:none}}h1 span{{display:inline;border-bottom:5px solid var(--coral)}}.hero-headline{{max-width:660px;margin:0 0 16px!important;font:700 clamp(19px,2.4vw,28px)/1.35 'Noto Serif SC',serif!important;color:var(--coral)!important}}.hero-grid{{position:relative;display:grid;grid-template-columns:1.35fr .65fr;gap:34px;align-items:end;z-index:1}}.hero p{{max-width:660px;margin:0;font-size:17px;color:var(--muted)}}.decision{{border:1px solid var(--ink);border-left:6px solid var(--coral);padding:16px 18px!important;background:var(--white);font-weight:700!important;color:var(--ink)!important;box-shadow:7px 7px 0 var(--lime)}}.signal-band{{padding:28px 0;background:transparent}}.signals{{display:grid;grid-template-columns:repeat(3,1fr);background:var(--ink);border:1px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}}.signal{{min-height:166px;padding:24px;border-right:1px solid rgba(255,255,255,.25);background:transparent;color:var(--white)}}.signal span,.section-head span{{font:700 11px 'Roboto Mono',monospace;letter-spacing:.09em;text-transform:uppercase}}.signal strong{{display:block;margin:11px 0 7px;font:500 clamp(26px,3vw,40px)/1 'Roboto Mono',monospace;letter-spacing:-.07em}}.signal p{{margin:0;font-size:13px;color:rgba(255,255,255,.6)}}.signal-green strong{{color:var(--lime)}}.signal-yellow strong{{color:var(--sun)}}.signal-red strong{{color:var(--coral)}}.data-lenses{{padding:50px 0 34px;border-bottom:1px solid var(--ink)}}.data-lenses h2{{margin:0;font:900 clamp(30px,5vw,54px)/1 'Noto Serif SC',serif;letter-spacing:-.06em}}.heat-grid{{display:flex;gap:22px;flex-wrap:wrap;margin-top:28px}}.heat-item{{width:150px;text-align:center}}.heat-circle{{width:100px;height:100px;border-radius:50%;margin:auto;display:grid;place-content:center;border:1px solid var(--ink);background:var(--sky);box-shadow:8px 8px 0 var(--coral)}}.heat-circle b{{font:900 34px/1 'Roboto Mono',monospace}}.heat-circle small{{font:700 11px 'Roboto Mono',monospace}}.heat-1{{opacity:.42}}.heat-2{{opacity:.56}}.heat-3{{opacity:.7}}.heat-4{{opacity:.84}}.heat-5{{opacity:1;background:var(--lime)}}.heat-item h3{{margin:14px 0 2px;font-size:15px}}.heat-item p{{margin:0;font-size:12px;color:var(--muted)}}.data-board{{padding:28px max(38px,calc((100vw - 944px)/2)) 64px;display:grid;grid-template-columns:1fr 1fr;gap:20px;border-bottom:1px solid var(--ink)}}.data-card{{padding:22px;border:1px solid var(--ink);background:var(--white);box-shadow:6px 6px 0 var(--ink)}}.data-card h3{{margin:0 0 18px;font:800 19px 'Noto Serif SC',serif}}.data-card p{{margin:0 0 18px;color:var(--muted);font-size:12px}}.signal-row,.export-row{{display:grid;grid-template-columns:56px 1fr 64px;gap:10px;align-items:center;margin:11px 0;font:700 12px 'Roboto Mono',monospace}}.signal-track,.export-row>div{{height:12px;background:var(--paper-2);border:1px solid var(--ink)}}.signal-fill,.export-row i{{display:block;height:100%;background:var(--lime)}}.signal-fill.signal-yellow{{background:var(--sun)}}.signal-fill.signal-red{{background:var(--coral)}}.export-row i{{background:var(--sky)}}.signal-row b,.export-row b{{text-align:right;font-size:10px;white-space:nowrap}}.visual-board{{padding:68px max(38px,calc((100vw - 944px)/2));display:grid;grid-template-columns:1.2fr .8fr;gap:22px;border-bottom:1px solid var(--ink)}}.scene{{position:relative;min-height:270px;margin:0;overflow:hidden;border:1px solid var(--ink);background:var(--paper-2);box-shadow:8px 8px 0 var(--coral)}}.scene-2{{margin-top:42px;box-shadow:8px 8px 0 var(--ink)}}.scene img{{display:block;width:100%;height:100%;min-height:270px;object-fit:cover;filter:saturate(.92) contrast(1.04)}}.scene figcaption{{position:absolute;left:0;bottom:0;max-width:85%;padding:8px 11px;background:var(--lime);border-top:1px solid var(--ink);border-right:1px solid var(--ink);font:700 11px 'Roboto Mono',monospace}}.section{{padding:70px max(38px,calc((100vw - 944px)/2));border-bottom:1px solid var(--ink)}}.section:nth-of-type(even){{background:rgba(232,227,214,.72)}}.section-head{{display:flex;gap:18px;align-items:baseline}}.section-head span{{color:var(--coral)}}.section-head h2{{margin:0;font:900 clamp(32px,6vw,64px)/.94 'Noto Serif SC',serif;letter-spacing:-.07em}}.section-summary{{max-width:760px;padding-left:18px;border-left:5px solid var(--coral);font-size:18px;font-weight:700}}.card-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:28px}}.insight-card{{border:1px solid var(--ink);padding:20px;background:var(--white);box-shadow:7px 7px 0 var(--ink)}}.insight-card:nth-child(2){{background:var(--lime)}}.section-pricing{{color:var(--white);background:radial-gradient(circle at 82% 22%,rgba(159,216,255,.24),transparent 25rem),var(--ink)!important}}.section-pricing .section-head span{{color:var(--lime)}}.section-pricing .section-summary{{border-left-color:var(--lime)}}.section-pricing .insight-card{{background:rgba(255,255,255,.07);color:var(--white);box-shadow:7px 7px 0 var(--coral)}}.section-pricing .insight-card:nth-child(2){{background:var(--coral);color:var(--ink)}}.insight-card h3{{margin:0 0 10px;font-size:17px;line-height:1.3}}.insight-card p{{margin:0;font-size:14px}}.sources{{padding:48px 0 76px}}.sources h2{{font:900 32px 'Noto Serif SC',serif}}.sources p,.sources li{{font-size:13px;color:var(--muted)}}.sources a{{color:var(--ink);text-decoration-thickness:1px;text-underline-offset:3px}}footer{{background:var(--ink);color:var(--paper);padding:22px 0;font:700 11px 'Roboto Mono',monospace;letter-spacing:.06em}}@media(max-width:680px){{.wrap{{padding:0 18px}}.hero{{padding-top:56px}}.hero-grid,.card-grid,.data-board,.visual-board{{grid-template-columns:1fr}}.signals{{grid-template-columns:1fr;box-shadow:5px 5px 0 var(--ink)}}.signal{{min-height:122px;border-right:0;border-bottom:1px solid rgba(255,255,255,.25)}}.section,.data-board,.visual-board{{padding:46px 18px}}.scene-2{{margin-top:0}}.section-head{{display:block}}.section-head h2{{margin-top:9px}}.heat-grid{{justify-content:space-between;gap:14px}}.heat-item{{width:calc(50% - 8px)}}}}
@@ -437,7 +450,7 @@ def render_html(content: dict[str, Any]) -> str:
 </style><style>
 .validation-card{{padding:22px;border:1px solid var(--ink);background:var(--lime);box-shadow:6px 6px 0 var(--ink)}}.validation-card>span{{font:700 10px 'Roboto Mono',monospace;letter-spacing:.1em}}.validation-card>h3{{margin:10px 0;font:900 30px/1 'Noto Serif SC',serif;letter-spacing:-.05em}}.validation-card>p{{margin:0 0 15px;font-size:13px}}.validation-item{{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:11px 0;border-top:1px solid rgba(23,23,19,.4)}}.validation-item>span{{font:700 12px 'Roboto Mono',monospace}}.validation-item h3{{margin:0 0 3px;font-size:14px}}.validation-item p{{margin:0;font-size:12px;line-height:1.55}}
 </style></head><body>
-<nav><div class="wrap"><span>BUSINESS / DECISION BRIEF</span><a href="#sources">查看资料来源 ↓</a></div></nav>
-<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">三分钟老板决策版 / 收集 {content["source_count"]} 条 · 入模 {content.get("evidence_count", content["source_count"])} 条 · 深读 {content.get("deep_read_count", 0)} 条</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
-<main><section class="signal-band"><div class="wrap"><div class="signals">{signal_html}</div></div></section><section class="data-board"><article class="data-card"><h3>三项决策信号</h3><p>这是基于本次公开资料的初步判断，不代表市场规模或预测。</p>{signal_chart_html}</article><article class="validation-card"><span>老板下一步</span><h3>先验证什么</h3><p>不要急着把资料信号当成结论。先用小成本，把下面三件事核实掉。</p>{validation_html}</article></section>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页仅基于本次搜索到的公开网页资料整理；信息不足处已保留“待验证”提示。</p><ol>{sources_html}</ol></div></section></main>
-<footer><div class="wrap">TREND_GRAB · 决策版 · 请在实际下单前核实价格、资质与渠道条件</div></footer></body></html>'''
+<nav><div class="wrap"><span>PUBLIC EVIDENCE / INDUSTRY BRIEF</span><a href="#sources">查看资料来源 ↓</a></div></nav>
+<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">行业研判页 / 收集 {content["source_count"]} 条 · 入模 {content.get("evidence_count", content["source_count"])} 条 · 深读 {content.get("deep_read_count", 0)} 条</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
+<main><section class="signal-band"><div class="wrap"><div class="signals">{signal_html}</div></div></section><section class="data-board"><article class="data-card"><h3>本次资料状态</h3><p>它衡量的是这次公开检索能支撑到什么程度，不代表市场规模、预测或经营结论。</p>{signal_chart_html}</article><article class="validation-card"><span>RESEARCH NEXT</span><h3>接下来要补什么</h3><p>把资料线索变成经营判断前，优先补足最关键的信息缺口，而不是先接受一个预设结论。</p>{validation_html}</article></section>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页仅基于本次搜索到的公开网页资料整理；没有找到可靠支撑的地方会明确保留“待核实”。</p><ol>{sources_html}</ol></div></section></main>
+<footer><div class="wrap">TREND_GRAB · 行业研判页 · 公开资料整合，不替代报价、客户访谈或实际经营数据</div></footer></body></html>'''
