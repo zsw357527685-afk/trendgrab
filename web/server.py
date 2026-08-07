@@ -37,7 +37,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.10.0")
+app = FastAPI(title="trend_grab", version="2.11.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -217,7 +217,7 @@ def search_web(query: str, max_results: int = 5) -> list[dict]:
 
 
 def search_images(query: str, max_results: int = 2) -> list[dict]:
-    """为行业研判页取少量行业实景配图；失败时不影响研究正文。"""
+    """为工厂接单研判页取行业实景配图；失败时不影响研究正文。"""
     try:
         from ddgs import DDGS
         results = []
@@ -240,7 +240,7 @@ def _save_readable_images(safe: str, images: list[dict]) -> list[dict]:
     asset_dir = PROJECT_ROOT / "output" / "readable" / "assets" / safe
     asset_dir.mkdir(parents=True, exist_ok=True)
     saved = []
-    for index, image in enumerate(images[:2], start=1):
+    for index, image in enumerate(images[:4], start=1):
         try:
             response = httpx.get(image["url"], timeout=8, follow_redirects=True,
                                  headers={"User-Agent": "Mozilla/5.0 (compatible; trend_grab/2.0)"})
@@ -519,7 +519,7 @@ async def generate(req: GenerateRequest):
 
 @app.post("/api/generate-readable")
 async def generate_readable(req: GenerateRequest):
-    """生成行业研判页；不改变原有白皮书接口与文件。"""
+    """生成工厂接单研判页；不改变原有白皮书接口与文件。"""
     industry = req.industry.strip()
     if not industry:
         raise HTTPException(400, "请输入行业名称")
@@ -532,12 +532,12 @@ async def generate_readable(req: GenerateRequest):
 
     try:
         content = generate_readable_content(client, LLM_MODEL, industry, search_web, fetch_content, _fetch_trade_data)
-        content["images"] = _save_readable_images(safe := re.sub(r'[\\/:*?"<>|]', '_', industry)[:80], search_images(f"{industry} 产品 工厂", 2))
+        content["images"] = _save_readable_images(safe := re.sub(r'[\\/:*?"<>|]', '_', industry)[:80], search_images(f"{industry} 工厂 产品 1688", 6))
         readable_html = render_readable_html(content)
     except ValueError as e:
-        raise HTTPException(502, f"决策版内容格式异常，请重试：{e}")
+        raise HTTPException(502, f"工厂接单研判页内容格式异常，请重试：{e}")
     except Exception as e:
-        raise HTTPException(500, f"决策版生成失败：{e}")
+        raise HTTPException(500, f"工厂接单研判页生成失败：{e}")
 
     safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
     readable_dir = PROJECT_ROOT / "output" / "readable"
@@ -1316,7 +1316,7 @@ async def create_share(industry: str = "", code: str = ""):
 
 @app.post("/api/share-readable")
 async def create_readable_share(industry: str = "", code: str = ""):
-    """为行业研判页创建独立分享链接，不影响既有白皮书分享。"""
+    """为工厂接单研判页创建独立分享链接，不影响既有白皮书分享。"""
     if not industry:
         raise HTTPException(400, "缺少行业名称")
     auth = _load_auth()
@@ -1326,7 +1326,7 @@ async def create_readable_share(industry: str = "", code: str = ""):
     safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
     path = PROJECT_ROOT / "output" / "readable" / f"{safe}.html"
     if not path.exists():
-        raise HTTPException(404, "决策版不存在，请先生成")
+        raise HTTPException(404, "工厂接单研判页不存在，请先生成")
 
     sid = uuid.uuid4().hex[:8]
     smap = _load_share_map()
@@ -1343,20 +1343,20 @@ async def create_readable_share(industry: str = "", code: str = ""):
 
 @app.get("/readable/{name}", response_class=HTMLResponse)
 async def view_readable_report(name: str):
-    """打开已生成的独立行业研判页。"""
+    """打开已生成的独立工厂接单研判页。"""
     safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80]
     if name != safe:
         raise HTTPException(404, "页面不存在")
     path = PROJECT_ROOT / "output" / "readable" / f"{safe}.html"
     if not path.exists():
-        raise HTTPException(404, "决策版不存在，请先生成")
+        raise HTTPException(404, "工厂接单研判页不存在，请先生成")
     return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
 @app.get("/readable-assets/{name}/{filename}")
 async def view_readable_asset(name: str, filename: str):
     safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80]
-    if name != safe or not re.fullmatch(r"scene-[12]\.(?:jpg|png|webp|gif)", filename):
+    if name != safe or not re.fullmatch(r"scene-[1-4]\.(?:jpg|png|webp|gif)", filename):
         raise HTTPException(404, "图片不存在")
     path = PROJECT_ROOT / "output" / "readable" / "assets" / safe / filename
     if not path.exists():
@@ -1370,7 +1370,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.10.0", "date": "2026-08-07"}
+    return {"version": "2.11.0", "date": "2026-08-07"}
 
 
 # ── 静态文件 ──

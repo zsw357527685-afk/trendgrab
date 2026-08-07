@@ -325,7 +325,7 @@ placeholder="输入行业名称，例如：3D打印饰品、解压玩具、AI硬
 
 <div class="btns-row">
 <button id="generateBtn" onclick="generate()">快速研究</button>
-<button id="readableBtn" onclick="generateReadable()">行业研判版</button>
+<button id="readableBtn" onclick="generateReadable()">工厂接单版</button>
 <button id="deepBtn" onclick="deepResearch()" style="background:var(--ink)">深度研究</button>
 </div>
 </div>
@@ -390,21 +390,21 @@ currentIndustry=industry;
 currentReport='';
 currentReadableUrl=data.url;
 currentReportKind='readable';
-document.getElementById('reportTitle').textContent=industry+' · 行业研判页';
+document.getElementById('reportTitle').textContent=industry+' · 工厂接单研判页';
 const content=document.getElementById('reportContent');
 content.classList.add('readable-view');
 content.replaceChildren();
 const outline=data.outline||{};
 const panel=document.createElement('section');
 panel.className='readable-outline';
-const kicker=document.createElement('span'); kicker.className='readable-kicker'; kicker.textContent='行业研判页 / 生成完成'; panel.appendChild(kicker);
-const title=document.createElement('h2'); title.textContent=outline.headline||industry+' · 公开资料研判'; panel.appendChild(title);
+const kicker=document.createElement('span'); kicker.className='readable-kicker'; kicker.textContent='工厂接单研判页 / 生成完成'; panel.appendChild(kicker);
+const title=document.createElement('h2'); title.textContent=outline.headline||industry+' · 工厂接单研判'; panel.appendChild(title);
 const decision=document.createElement('p'); decision.className='readable-decision'; decision.textContent=outline.decision||'请打开完整页面查看资料线索与待核实项。'; panel.appendChild(decision);
 const signals=document.createElement('div'); signals.className='outline-signals';
 (outline.signals||[]).forEach(item=>{const cell=document.createElement('article'); cell.className='outline-signal'; const name=document.createElement('em');name.textContent=item.name||'信号';const value=document.createElement('strong');value.textContent=item.value||'待验证';const note=document.createElement('p');note.textContent=item.note||'';cell.append(name,value,note);signals.appendChild(cell)}); panel.appendChild(signals);
 const sections=document.createElement('div'); sections.className='outline-sections';
 (outline.sections||[]).forEach(item=>{const cell=document.createElement('div');cell.className='outline-section';const eyebrow=document.createElement('small');eyebrow.textContent=item.eyebrow||'';const sectionTitle=document.createElement('b');sectionTitle.textContent=item.title||'';cell.append(eyebrow,sectionTitle);sections.appendChild(cell)}); panel.appendChild(sections);
-const open=document.createElement('button');open.className='open-readable';open.type='button';open.textContent='打开完整行业研判页  →';open.addEventListener('click',()=>{window.location.href=data.url});panel.appendChild(open);
+const open=document.createElement('button');open.className='open-readable';open.type='button';open.textContent='打开完整工厂接单研判页  →';open.addEventListener('click',()=>{window.location.href=data.url});panel.appendChild(open);
 content.appendChild(panel);
 document.getElementById('htmlBtn').textContent='下载 HTML';
 }
@@ -516,7 +516,7 @@ report.classList.remove('show');
 document.getElementById('eta').textContent='预计 2 分钟';
 
 const started=Date.now();
-const phases=['正在搜索公开资料…','正在深读和筛选可用线索…','正在按资料组织行业研判页…'];
+const phases=['正在搜索公开资料…','正在深读和筛选可用线索…','正在整理工厂接单线索…'];
 let phaseIndex=0;
 statusText.textContent=phases[0];
 const phaseTimer=setInterval(()=>{
@@ -563,15 +563,15 @@ if(!currentReport && !currentReadableUrl)return;
 
 if(currentReportKind==='readable'){
   if(format==='md'){
-    alert('行业研判版是图文 HTML 页面，请下载 HTML。');
+    alert('工厂接单研判页是图文 HTML 页面，请下载 HTML。');
     return;
   }
   const response=await fetch(currentReadableUrl);
-  if(!response.ok)throw new Error('决策版文件不存在，请重新生成。');
+  if(!response.ok)throw new Error('工厂接单研判页文件不存在，请重新生成。');
   let blob=new Blob([await response.text()],{type:'text/html'});
   let a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download=currentIndustry+'_行业研判页.html';
+  a.download=currentIndustry+'_工厂接单研判.html';
   a.click();
   URL.revokeObjectURL(a.href);
   return;
