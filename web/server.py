@@ -37,7 +37,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.11.0")
+app = FastAPI(title="trend_grab", version="2.12.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -235,12 +235,12 @@ def search_images(query: str, max_results: int = 2) -> list[dict]:
         return []
 
 
-def _save_readable_images(safe: str, images: list[dict]) -> list[dict]:
+def _save_readable_images(safe: str, images: list[dict], limit: int = 4) -> list[dict]:
     """将搜索到的小图保存到本地，避免独立页面因外链失效而留白。"""
     asset_dir = PROJECT_ROOT / "output" / "readable" / "assets" / safe
     asset_dir.mkdir(parents=True, exist_ok=True)
     saved = []
-    for index, image in enumerate(images[:4], start=1):
+    for index, image in enumerate(images[:limit], start=1):
         try:
             response = httpx.get(image["url"], timeout=8, follow_redirects=True,
                                  headers={"User-Agent": "Mozilla/5.0 (compatible; trend_grab/2.0)"})
@@ -259,6 +259,38 @@ def _save_readable_images(safe: str, images: list[dict]) -> list[dict]:
         except Exception:
             continue
     return saved
+
+
+READABLE_SECTION_IMAGE_QUERIES = {
+    "demand": "订单 爆款 工厂 出货",
+    "product": "产品 款式 工厂 1688",
+    "pricing": "价格 批发 1688 出厂价",
+    "orders": "采购 跨境 平台 批发",
+    "barriers": "认证 检测 工厂 质量",
+    "risks": "质量问题 投诉 风险",
+    "next": "展会 工厂 订单 客户",
+}
+
+
+def _attach_readable_section_images(content: dict, search_images, save_images) -> dict:
+    """生成内容后按板块补图：每节一张，分散到页面而不是堆在顶部。"""
+    safe = re.sub(r'[\\/:*?"<>|]', '_', content["industry"])[:80]
+    sections = content.get("sections", [])
+
+    def load_one(section):
+        try:
+            query = f"{content['industry']} {READABLE_SECTION_IMAGE_QUERIES.get(section.get('id'), '工厂 产品')}"
+            images = search_images(query, 2)
+            return section, save_images(f"{safe}_{section.get('id', 'section')}", images, 1)
+        except Exception:
+            return section, []
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(load_one, section) for section in sections]
+        for future in as_completed(futures):
+            section, saved = future.result()
+            section["images"] = saved
+    return content
 
 
 def search_news(query: str, max_results: int = 5) -> list[dict]:
@@ -532,7 +564,7 @@ async def generate_readable(req: GenerateRequest):
 
     try:
         content = generate_readable_content(client, LLM_MODEL, industry, search_web, fetch_content, _fetch_trade_data)
-        content["images"] = _save_readable_images(safe := re.sub(r'[\\/:*?"<>|]', '_', industry)[:80], search_images(f"{industry} 工厂 产品 1688", 6))
+        content = _attach_readable_section_images(content, search_images, _save_readable_images)
         readable_html = render_readable_html(content)
     except ValueError as e:
         raise HTTPException(502, f"工厂接单研判页内容格式异常，请重试：{e}")
@@ -1370,7 +1402,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.11.0", "date": "2026-08-07"}
+    return {"version": "2.12.0", "date": "2026-08-07"}
 
 
 # ── 静态文件 ──

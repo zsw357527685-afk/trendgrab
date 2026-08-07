@@ -142,7 +142,7 @@ def _json_from_response(raw: str) -> dict[str, Any]:
             candidate, _ = decoder.raw_decode(cleaned[match.start() :])
         except json.JSONDecodeError:
             continue
-        if isinstance(candidate, dict):
+        if isinstance(candidate, dict) and any(key in candidate for key in ("headline", "sections", "decision")):
             return candidate
     raise ValueError("模型没有返回可用的结构化内容")
 
@@ -367,7 +367,7 @@ JSON 必须符合：
 
 反重复铁律：同一事实和同一组数字只允许出现一次。data_points 是结构化数据点，图表只画 data_points 里的数据；summary 只写判断句，不复述完整数字；analysis 最多解释一次关键数据，不要逐条重列；cards 只放新增案例、细节或解读，不重写 data_points 已列出的内容。跨板块也遵守：同一数据只在其最相关的板块作为主信息，其他板块用“如前所述”带过，不要再次写全数字。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲资料支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲资料支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
 
 研究资料（已按订单、产品、渠道、门槛、风险均衡挑选；标有“深读”的资料正文更完整）：
 {evidence}"""
@@ -375,7 +375,7 @@ sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.35,
-        max_tokens=3500,
+        max_tokens=5000,
     )
     content = normalise_content(
         _json_from_response(response.choices[0].message.content), industry, sources,
@@ -386,21 +386,29 @@ sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决
     return content
 
 
+def _source_title(source: dict[str, Any], max_len: int = 18) -> str:
+    title = str(source.get("title", "")).strip()
+    if not title:
+        return ""
+    return title if len(title) <= max_len else title[:max_len] + "…"
+
+
+def _source_link(source_id: str, source_map: dict[str, dict[str, Any]]) -> str:
+    source = source_map.get(source_id)
+    if source and source.get("url"):
+        return (
+            f'<a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer" '
+            f'title="{html.escape(source.get("title", ""), quote=True)}">'
+            f'[{html.escape(source_id, quote=True)}] {html.escape(_source_title(source))}</a>'
+        )
+    return f'<span class="source-ref">[{html.escape(source_id, quote=True)}]</span>'
+
+
 def _render_citations(card: dict[str, Any], source_map: dict[str, dict[str, Any]]) -> str:
     source_ids = card.get("sources", [])
     if not source_ids:
         return '<span class="no-citation">来源待核实</span>'
-    links = []
-    for source_id in source_ids:
-        source = source_map.get(source_id)
-        if source and source.get("url"):
-            links.append(
-                f'<a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer" '
-                f'title="{html.escape(source.get("title", ""), quote=True)}">[{html.escape(source_id, quote=True)}]</a>'
-            )
-        else:
-            links.append(f'<span class="source-ref">[{html.escape(source_id, quote=True)}]</span>')
-    return '<span class="citations">' + " ".join(links) + '</span>'
+    return '<span class="citations">' + " ".join(_source_link(source_id, source_map) for source_id in source_ids) + '</span>'
 
 
 def _render_data_points(data_points: list[dict[str, Any]], source_map: dict[str, dict[str, Any]]) -> str:
@@ -432,14 +440,7 @@ def _render_chart(chart: dict[str, Any] | None, source_map: dict[str, dict[str, 
     note_html = f'<p class="chart-note">{note}</p>' if note else ""
     chart_links = []
     for source_id in chart.get("sources", []):
-        source = source_map.get(source_id)
-        if source and source.get("url"):
-            chart_links.append(
-                f'<a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer" '
-                f'title="{html.escape(source.get("title", ""), quote=True)}">[{html.escape(source_id, quote=True)}]</a>'
-            )
-        else:
-            chart_links.append(f'<span class="source-ref">[{html.escape(source_id, quote=True)}]</span>')
+        chart_links.append(_source_link(source_id, source_map))
     chart_sources = " ".join(chart_links)
     sources_html = f'<p class="chart-sources">来源：{chart_sources}</p>' if chart_sources else ""
     if chart["type"] == "donut":
@@ -480,6 +481,20 @@ def _render_cards(cards: list[dict[str, Any]], source_map: dict[str, dict[str, A
     )
 
 
+def _render_section_image(section: dict[str, Any]) -> str:
+    images = section.get("images", [])
+    if not images:
+        return ""
+    image = images[0]
+    if not image.get("url"):
+        return ""
+    return (
+        f'<figure class="section-media"><img src="{html.escape(image["url"], quote=True)}" '
+        f'alt="{html.escape(image.get("title", section["title"]), quote=True)}" loading="lazy">'
+        f'<figcaption>{html.escape(image.get("title", "行业参考图"))}</figcaption></figure>'
+    )
+
+
 def _section_frame(section: dict[str, Any], body: str, source_map: dict[str, dict[str, Any]]) -> str:
     return f'''<section id="{section["id"]}" class="section section-{section["id"]}">
   <div class="section-head"><span>{html.escape(section["eyebrow"])}</span><h2>{html.escape(section["title"])}</h2></div>
@@ -492,7 +507,7 @@ def _render_section(section: dict[str, Any], source_map: dict[str, dict[str, Any
     """不同接单板块使用不同信息布局，避免整页都是同一种卡片。"""
     cards = section["cards"]
     section_id = section["id"]
-    structured = _render_chart(section.get("chart"), source_map) + _render_data_points(section.get("data_points", []), source_map)
+    structured = _render_section_image(section) + _render_chart(section.get("chart"), source_map) + _render_data_points(section.get("data_points", []), source_map)
     if section_id == "demand":
         body = structured + '<div class="market-layout"><div class="evidence-stack">' + _render_cards(cards[:2], source_map) + '</div>'
         if len(cards) > 2:
@@ -535,6 +550,7 @@ def _heat_label(strength: int) -> str:
 
 def render_html(content: dict[str, Any]) -> str:
     """阶段二：只由 Python 负责把 JSON 填进固定版式。"""
+    has_section_images = any(section.get("images") for section in content["sections"])
     image_html = "".join(
         f'<figure class="scene scene-{index}"><img src="{html.escape(image["url"], quote=True)}" alt="{html.escape(image.get("title", content["industry"]))}" loading="lazy"><figcaption>{html.escape(image.get("title", "行业参考图"))}</figcaption></figure>'
         for index, image in enumerate(content.get("images", [])[:4], start=1)
@@ -549,12 +565,14 @@ def render_html(content: dict[str, Any]) -> str:
         )
     visual_board_html = (
         f'<section class="visual-board">{visual_context}<div class="visual-gallery">{image_html}</div></section>'
-        if image_html else ""
+        if image_html and not has_section_images else ""
     )
     source_map = {source["id"]: source for source in content["sources"]}
     sections_html = "".join(_render_section(section, source_map) for section in content["sections"])
     sources_html = "".join(
-        f'<li><span class="source-meta">{html.escape(source.get("topic", "资料"))}{" · 深读" if source.get("deep_read") else ""}</span>[{html.escape(source["id"])}] {html.escape(source["title"])}</li>'
+        f'<li><span class="source-meta">{html.escape(source.get("topic", "资料"))}{" · 深读" if source.get("deep_read") else ""}</span>'
+        f'<span class="source-title">[{html.escape(source["id"])}] {html.escape(source["title"])}</span>'
+        f'<span class="source-url">{html.escape(source.get("url", ""), quote=True)}</span></li>'
         for source in content["sources"]
     ) or "<li>本次未取得可引用的公开来源。</li>"
     title = html.escape(content["industry"])
@@ -578,7 +596,9 @@ def render_html(content: dict[str, Any]) -> str:
 </style><style>
 .visual-gallery{{grid-template-columns:repeat(2,1fr)!important;gap:16px!important}}.visual-gallery .scene{{min-height:210px!important}}.visual-gallery .scene img{{min-height:210px!important}}@media(max-width:680px){{.visual-gallery{{grid-template-columns:1fr!important}}.visual-gallery .scene{{min-height:200px!important}}}}
 </style><style>
-:root{{--muted:#4f4e48!important}}.price-flow{{background:var(--white)!important;border:1px solid var(--ink)!important;box-shadow:6px 6px 0 var(--ink)!important}}.price-stop{{background:var(--white)!important;border:1px solid var(--ink)!important}}.price-stop p{{color:#35342f!important}}.flow-arrow{{color:var(--coral)!important}}.risk-item p{{color:rgba(255,255,255,.88)!important}}.citations,.no-citation,.chart-sources,.source-meta{{font-size:11px!important}}.citations a{{padding:3px 7px!important;font-size:11px!important}}.source-meta{{color:var(--ink)!important;background:var(--white)!important;border:1px solid var(--ink)!important}}.data-table th{{font-size:11px!important}}.source-ref{{color:var(--muted)!important}}.data-table .citations{{display:inline-block!important;margin:4px 0 0!important}}.chart-sources a{{padding:3px 6px!important}}
+:root{{--muted:#4f4e48!important}}.price-flow{{background:var(--white)!important;border:1px solid var(--ink)!important;box-shadow:6px 6px 0 var(--ink)!important}}.price-stop{{background:var(--white)!important;border:1px solid var(--ink)!important}}.price-stop p{{color:#35342f!important}}.flow-arrow{{color:var(--coral)!important}}.risk-item p{{color:rgba(255,255,255,.88)!important}}.citations,.no-citation,.chart-sources,.source-meta{{font-size:11px!important}}.citations a{{padding:3px 7px!important;font-size:11px!important}}.source-meta{{color:var(--ink)!important;background:var(--white)!important;border:1px solid var(--ink)!important}}.data-table th{{font-size:11px!important}}.source-ref{{color:var(--muted)!important}}.data-table .citations{{display:inline-block!important;margin:4px 0 0!important}}.chart-sources a{{padding:3px 6px!important}}.section-pricing .price-flow,.section-pricing .price-stop,.section-pricing .price-stop span,.section-pricing .price-stop b,.section-pricing .price-stop p{{color:var(--ink)!important}}.section-pricing .flow-arrow{{color:var(--coral)!important}}.section-pricing .chart-panel,.section-pricing .data-panel,.section-pricing .data-table{{color:var(--ink)!important}}.section-pricing .data-note,.section-pricing .chart-note,.section-pricing .chart-sources{{color:var(--muted)!important}}
+</style><style>
+.section-media{{max-width:560px;margin:24px 0 0;border:1px solid var(--ink);background:var(--white);box-shadow:6px 6px 0 var(--coral)}}.section-media img{{display:block;width:100%;max-height:320px;object-fit:cover}}.section-media figcaption{{padding:8px 12px;background:var(--white);border-top:1px solid var(--ink);font:700 11px 'Roboto Mono',monospace;color:var(--ink)}}.section:nth-of-type(even) .section-media{{margin-left:auto}}.source-title{{display:block;margin-top:3px;color:var(--ink)!important}}.source-url{{display:block;margin-top:2px;color:var(--muted);font-size:11px;word-break:break-all}}.sources li{{margin:0 0 12px}}.citations a{{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}}
 </style></head><body>
 <nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><a href="#sources">查看资料来源 ↓</a></div></nav>
 <header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
