@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.26.0")
+app = FastAPI(title="trend_grab", version="2.27.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -302,6 +302,7 @@ READABLE_SECTION_IMAGE_QUERIES = {
     "history": "行业 发展 历史 里程碑",
     "hot_topics": "爆款 热销 订单 案例",
     "competition": "品牌 工厂 代工 供应链",
+    "players": "头部品牌 店铺 爆款 卖家",
     "cost_profit": "成本 价格 利润 报价",
     "supply_chain": "产业带 供应链 工厂 产地",
     "channels": "渠道 平台 采购 批发",
@@ -1701,7 +1702,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.26.0", "date": "2026-08-08"}
+    return {"version": "2.27.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
