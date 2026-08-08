@@ -17,14 +17,14 @@ SECTION_BLUEPRINT = (
     ("history", "02 / 发展路径", "品类起源、阶段与关键节点"),
     ("hot_topics", "03 / 近期热点", "订单、爆款与正在发生的事"),
     ("competition", "04 / 竞争格局", "玩家、代工、渠道与利润分布"),
-    ("cost_profit", "05 / 成本与利润", "价格带、成本结构、利润在哪"),
-    ("supply_chain", "06 / 产业带与供应链", "产地、供应链、代工能力"),
-    ("channels", "07 / 渠道与订单", "谁在给单、走什么渠道"),
-    ("barriers", "08 / 认证与门槛", "认证、资质、工艺门槛"),
-    ("trends", "09 / 趋势预测", "接下来会怎么变、什么款有空间"),
-    ("risks", "10 / 风险与不确定", "接单与走量的风险、缺口"),
-    ("next", "11 / 下一步验证", "接单前最该补的资料"),
-    ("players", "12 / 头部品牌与店铺", "头部玩家、淘宝/1688头部店、跨境卖家"),
+    ("players", "05 / 头部品牌与店铺", "头部玩家、淘宝/1688头部店、跨境卖家"),
+    ("cost_profit", "06 / 成本与利润", "价格带、成本结构、利润在哪"),
+    ("supply_chain", "07 / 产业带与供应链", "产地、供应链、代工能力"),
+    ("channels", "08 / 渠道与订单", "谁在给单、走什么渠道"),
+    ("barriers", "09 / 认证与门槛", "认证、资质、工艺门槛"),
+    ("trends", "10 / 趋势预测", "接下来会怎么变、什么款有空间"),
+    ("risks", "11 / 风险与不确定", "接单与走量的风险、缺口"),
+    ("next", "12 / 下一步验证", "接单前最该补的资料"),
 )
 
 BLOCKED_SOURCE_MARKERS = (
@@ -42,6 +42,11 @@ READABLE_QUERIES = {
 READABLE_QUALITY_SITES = (
     "36kr.com", "huxiu.com", "jiemian.com", "cifnews.com", "amz123.com", "1688.com",
     "yiwugo.com", "aliexpress.com", "made-in-china.com", "globalsources.com",
+)
+STORE_SEARCH_QUERIES = (
+    "淘宝 头部店铺 综合排行",
+    "1688 头部店铺 排行",
+    "淘宝 店铺 销量 排行",
 )
 
 
@@ -207,6 +212,7 @@ def normalise_content(
     source_count = len(sources)
     valid_source_ids = valid_source_ids or {str(source.get("id")) for source in sources}
     blueprint_by_id = {section_id: (eyebrow, fallback_title) for section_id, eyebrow, fallback_title in SECTION_BLUEPRINT}
+    blueprint_order = {section_id: index for index, (section_id, _, _) in enumerate(SECTION_BLUEPRINT)}
     sections = []
     seen_section_ids: set[str] = set()
     # 模型按“资料实际支持的顺序”返回 4–7 个模块；不强制把所有模块填满。
@@ -235,6 +241,7 @@ def normalise_content(
                 "cards": _normalise_cards(item.get("cards"), valid_source_ids) or [{"title": "资料提示", "text": "公开资料暂不足以形成可靠结论。", "sources": []}],
             }
         )
+    sections.sort(key=lambda section: blueprint_order.get(section["id"], 999))
 
     if not sections:
         sections = [{
@@ -261,7 +268,7 @@ def normalise_content(
         "export_heat": heat[:5],
         "sections": sections,
         "source_count": source_count,
-        "sources": sources[:42],
+        "sources": sources[:60],
     }
 
 
@@ -622,6 +629,7 @@ def generate_from_deep_report(
     model: str,
     industry: str,
     deep_text: str,
+    search_web: Callable[[str, int], list[dict[str, str]]] | None = None,
 ) -> dict[str, Any]:
     """阶段一（深度报告版）：从已有深度报告里抽取老板版内容，不重新做浅层搜索。"""
     sources, deep_text_by_id, evidence_text = _parse_deep_sources(deep_text)
@@ -633,10 +641,54 @@ def generate_from_deep_report(
         deep_text_by_id = {"S1": deep_text}
         evidence_text = deep_text
 
+    store_sources: list[dict[str, Any]] = []
+    store_evidence_parts: list[str] = []
+    if search_web:
+        seen_store_urls: set[str] = set()
+        industry_compact = re.sub(r"\s+", "", industry.lower())
+
+        def add_store_source(item: dict[str, Any], topic: str) -> None:
+            url = str(item.get("url", "")).strip()
+            if not url or url in seen_store_urls:
+                return
+            title = str(item.get("title", "")).strip() or "店铺来源"
+            snippet = str(item.get("snippet", "")).strip()
+            combined = f"{title}\n{snippet}\n{url}".lower()
+            if industry_compact and industry_compact not in combined and not any(
+                marker in combined for marker in ("淘宝", "1688", "店铺", "排行", "卖家")
+            ):
+                return
+            seen_store_urls.add(url)
+            source_id = f"T{len(store_sources) + 1}"
+            store_sources.append({
+                "id": source_id, "url": url, "title": title,
+                "snippet": snippet, "topic": topic, "deep_read": False,
+            })
+            store_evidence_parts.append(f"[{source_id}] [{topic}] {title}\n{snippet}\n{url}")
+
+        for query in STORE_SEARCH_QUERIES:
+            for result in search_web(f"{industry} {query}", 5):
+                add_store_source(result, "淘宝/1688头部店铺")
+        for name, url in (
+            ("淘宝", f"https://s.taobao.com/search?q={quote(industry)}"),
+            ("1688", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(industry)}"),
+        ):
+            add_store_source({
+                "title": f"{name} {industry} 店铺综合排序页",
+                "url": url,
+                "snippet": "平台店铺综合排序搜索结果页，需点开核实头部店铺。",
+            }, "淘宝/1688头部店铺")
+        sources.extend(store_sources)
+        for source in store_sources:
+            deep_text_by_id[source["id"]] = source["snippet"]
+
     evidence = evidence_text[:60000]
+    store_evidence = "\n\n".join(store_evidence_parts)
+    if store_evidence:
+        evidence += "\n\n---\n\n淘宝/1688 头部店铺搜索结果（用于 players 板块，编号为 [T#]）：\n" + store_evidence
     prompt = f"""你是服务于义乌及产业带工厂老板的产业情报分析师，读者主要做代工（OEM/ODM）或走量批发。以下是一份已经完成的「{industry}」深度研究报告，引用已经替换成 [S#] 编号。请只从这份深度报告里选取对工厂接单、代工、走量批发真正有用的内容，做成《工厂接单研判页》。
 
-深度报告通常按五章组织：行业概述、发展路径、近期热点、竞争格局、趋势预测。请以这五章为骨架组织老板版：行业概述转成“市场、规模、产业链与工厂位置”，发展路径转成“品类怎么走到今天、哪些节点影响现在”，近期热点转成“订单、爆款与正在发生的事”，竞争格局转成“玩家、代工、渠道与利润分布”，趋势预测转成“接下来会怎么变、什么款有空间”，再补充风险、下一步验证和头部品牌与店铺。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。可以提及深度报告里真实出现的头部品牌、淘宝/1688头部店铺、跨境卖家，但必须来自报告并有来源；只写它们对工厂接单的含义。
+深度报告通常按五章组织：行业概述、发展路径、近期热点、竞争格局、趋势预测。请以这五章为骨架组织老板版：行业概述转成“市场、规模、产业链与工厂位置”，发展路径转成“品类怎么走到今天、哪些节点影响现在”，近期热点转成“订单、爆款与正在发生的事”，竞争格局转成“玩家、代工、渠道与利润分布”，趋势预测转成“接下来会怎么变、什么款有空间”，再补充风险、下一步验证和头部品牌与店铺。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。可以提及深度报告里真实出现的头部品牌、淘宝/1688头部店铺、跨境卖家，也可以使用下方补充的 [T#] 淘宝/1688店铺搜索结果，但必须来自资料并有来源；只写它们对工厂接单的含义。
 
 这不是经营指令书：你不了解该工厂的真实成本、产能、客户和报价，不能替老板下“应该投产/应该赚钱”的结论。只能使用深度报告中明确出现的事实和 [S#] 编号；不确定就写“资料不足，建议验证”，绝不能编造数字、国家、产品、价格、销量、利润或来源。不要输出 Markdown，不要输出解释，只输出一个合法 JSON 对象。
 
@@ -688,6 +740,10 @@ sections 从上述 12 个 id 中选择 6-11 个，顺序由深度报告内容决
         _json_from_response(response.choices[0].message.content), industry, sources,
         {source["id"] for source in sources},
     )
+    existing_source_ids = {source["id"] for source in content["sources"]}
+    content["sources"] = content["sources"] + [
+        source for source in store_sources if source["id"] not in existing_source_ids
+    ]
     content = _prune_unsupported_sources(content, sources, deep_text_by_id)
     content["evidence_count"] = len(sources)
     content["deep_read_count"] = len(sources)

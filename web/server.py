@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.27.0")
+app = FastAPI(title="trend_grab", version="2.28.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -633,7 +633,7 @@ async def generate_readable(req: GenerateRequest):
     try:
         deep_path = _ensure_deep_report(industry)
         deep_text = deep_path.read_text(encoding="utf-8")
-        content = generate_from_deep_report(client, LLM_MODEL, industry, deep_text)
+        content = generate_from_deep_report(client, LLM_MODEL, industry, deep_text, search_web)
         content = _attach_readable_section_images(content, search_images, _save_readable_images)
         deep_safe = re.sub(r"^report_", "", deep_path.stem)
         content["deep_report_url"] = f"/deep-report/{quote(deep_safe)}"
@@ -1702,7 +1702,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.27.0", "date": "2026-08-08"}
+    return {"version": "2.28.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
