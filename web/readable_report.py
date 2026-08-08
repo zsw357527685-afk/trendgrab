@@ -669,15 +669,6 @@ def generate_from_deep_report(
         for query in STORE_SEARCH_QUERIES:
             for result in search_web(f"{industry} {query}", 5):
                 add_store_source(result, "淘宝/1688头部店铺")
-        for name, url in (
-            ("淘宝", f"https://s.taobao.com/search?q={quote(industry)}&tab=shop"),
-            ("1688", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(industry)}"),
-        ):
-            add_store_source({
-                "title": f"{name} {industry} 店铺综合排序页",
-                "url": url,
-                "snippet": "平台店铺综合排序搜索结果页，需点开核实头部店铺。",
-            }, "淘宝/1688头部店铺")
         sources.extend(store_sources)
         for source in store_sources:
             deep_text_by_id[source["id"]] = source["snippet"]
@@ -988,11 +979,14 @@ def render_html(content: dict[str, Any]) -> str:
     )
     taobao_shop_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=shop"
     taobao_item_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=all"
+    ali1688_url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(content['industry'])}"
     verify_links = (
         f'<a class="verify-link" href="{html.escape(taobao_shop_url, quote=True)}" '
         f'target="_blank" rel="noopener noreferrer">淘宝按店铺核实 →</a>'
         f'<a class="verify-link verify-link-alt" href="{html.escape(taobao_item_url, quote=True)}" '
         f'target="_blank" rel="noopener noreferrer">淘宝按宝贝核实 →</a>'
+        f'<a class="verify-link verify-link-alt" href="{html.escape(ali1688_url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">1688按店铺核实 →</a>'
     )
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
