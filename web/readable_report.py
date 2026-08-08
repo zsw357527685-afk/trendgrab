@@ -612,7 +612,13 @@ def _parse_deep_sources(deep_text: str) -> tuple[list[dict[str, Any]], dict[str,
             sid = f"S{len(sources) + 1}"
             url_to_sid[url] = sid
             host = urlparse(url).netloc or url
-            title = label if label and label != "↗" else host
+            before = re.sub(r"\[[^\]]*\]\(https?://[^)\s]+\)", "", deep_text[max(0, match.start() - 120):match.start()])
+            before = re.sub(r"\s+", " ", before).strip()
+            sentence = re.split(r"[。！？；]", before)[-1].strip()
+            title = label if label and label != "↗" else (sentence[:60] or host)
+            title = re.sub(r"[#*`>]+", "", title).strip() or host
+            if len(title) > 60:
+                title = title[:60] + "…"
             sources.append({
                 "id": sid, "url": url, "title": title,
                 "snippet": context, "topic": "深度报告", "deep_read": True,
@@ -976,7 +982,7 @@ def render_html(content: dict[str, Any]) -> str:
     sections_html = "".join(_render_section(section, source_map) for section in content["sections"])
     sources_html = "".join(
         f'<li><span class="source-meta">{html.escape(source.get("topic", "资料"))}{" · 深读" if source.get("deep_read") else ""}</span>'
-        f'<span class="source-title" title="{html.escape(source.get("title", ""), quote=True)}">[{html.escape(source["id"])}]</span></li>'
+        f'<span class="source-title">[{html.escape(source["id"])}] {html.escape(source["title"])}</span></li>'
         for source in content["sources"]
     ) or "<li>本次未取得可引用的公开来源。</li>"
     title = html.escape(content["industry"])
