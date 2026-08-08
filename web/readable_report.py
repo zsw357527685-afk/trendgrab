@@ -950,6 +950,13 @@ def _heat_label(strength: int) -> str:
 
 def render_html(content: dict[str, Any]) -> str:
     """阶段二：只由 Python 负责把 JSON 填进固定版式。"""
+    for section in content.get("sections", []):
+        section.setdefault("analysis", section.get("summary", ""))
+        section.setdefault("cards", [])
+        section.setdefault("sources", [])
+        section.setdefault("data_points", [])
+        section.setdefault("chart", None)
+        section.setdefault("image_queries", [])
     has_section_images = any(section.get("images") for section in content["sections"])
     def render_scene(image: dict[str, Any], index: int) -> str:
         figure = (
@@ -992,6 +999,7 @@ def render_html(content: dict[str, Any]) -> str:
         f'<a class="verify-link verify-link-alt" href="{html.escape(ali1688_url, quote=True)}" '
         f'target="_blank" rel="noopener noreferrer">1688按店铺核实 →</a>'
     )
+    home_link = '<a class="nav-btn nav-btn-alt" href="/">返回重新生成</a>'
     sections_html = "".join(
         _render_section(section, source_map, verify_links if section["id"] == "players" else "")
         for section in content["sections"]
@@ -1039,7 +1047,7 @@ def render_html(content: dict[str, Any]) -> str:
 </style><style>
 .sources ol{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:28px 0 0;padding:0;list-style:none}}.sources li{{margin:0!important;padding:14px 16px;border:1px solid var(--ink);border-left:5px solid var(--coral);background:var(--white);box-shadow:5px 5px 0 var(--paper-2)}}.source-meta{{background:var(--lime)!important;border:1px solid var(--ink)!important;color:var(--ink)!important}}@media(max-width:680px){{.sources ol{{grid-template-columns:1fr}}.nav-links{{gap:8px}}.nav-btn{{padding:7px 10px;font-size:11px}}}}
 </style></head><body>
-<nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><div class="nav-links">{deep_report_link}<a class="nav-btn nav-btn-alt" href="#sources">查看资料来源 ↓</a></div></div></nav>
+<nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><div class="nav-links">{home_link}{deep_report_link}<a class="nav-btn nav-btn-alt" href="#sources">查看资料来源 ↓</a></div></div></nav>
 <header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><div class="decision-zone"><p class="decision">{html.escape(content["decision"])}</p></div></div></div></header>
 <main>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页基于公开资料整理；没有可靠支撑的地方会明确保留“待核实”。</p><ol>{sources_html}</ol></div></section></main>
 <footer><div class="wrap">TREND_GRAB · 工厂接单研判 · 接单前仍需核实价格、认证和客户条件</div></footer></body></html>'''

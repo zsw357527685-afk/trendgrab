@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.37.0")
+app = FastAPI(title="trend_grab", version="2.38.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -479,40 +479,48 @@ def _save_auth(data: dict):
 def _init_auth():
     data = _load_auth()
     if "admin" not in data:
-        data["admin"] = {"quick_left": -1, "deep_left": -1, "reports": []}
+        data["admin"] = {"web_left": -1, "reports": []}
+    changed = False
+    for info in data.values():
+        if isinstance(info, dict) and "web_left" not in info:
+            info["web_left"] = info.get("quick_left", info.get("deep_left", 10 if info is not data.get("admin") else -1))
+            info.pop("quick_left", None)
+            info.pop("deep_left", None)
+            changed = True
     if len(data) <= 1:  # only admin, generate 10 codes
         for i in range(10):
             c = f"HM{uuid.uuid4().hex[:8].upper()}"
-            data[c] = {"quick_left": 10, "deep_left": 3, "reports": []}
+            data[c] = {"web_left": 10, "reports": []}
+        changed = True
+    if changed:
         _save_auth(data)
     return data
 
 
-def _check_code(code: str, mode: str = "quick") -> dict | None:
+def _check_code(code: str) -> dict | None:
     """验证授权码，返回码信息或 None"""
     data = _load_auth()
     if code == ADMIN_CODE:
-        return data.get("admin", {"quick_left": -1, "deep_left": -1, "reports": []})
+        return data.get("admin", {"web_left": -1, "reports": []})
     c = data.get(code)
     if not c:
         return None
-    key = f"{mode}_left"
-    if c.get(key, 0) == 0:
+    if c.get("web_left", 0) == 0:
         return None  # 次数用完
     return c
 
 
-def _use_code(code: str, mode: str, industry: str, path: str):
+def _use_code(code: str, industry: str, path: str):
     """扣减次数，记录报告"""
     data = _load_auth()
     if code == ADMIN_CODE:
-        c = data.setdefault("admin", {"quick_left": -1, "deep_left": -1, "reports": []})
+        c = data.setdefault("admin", {"web_left": -1, "reports": []})
     else:
         c = data.get(code)
-    if c and c.get(f"{mode}_left", 0) > 0:
-        c[f"{mode}_left"] -= 1
+    if c and c.get("web_left", 0) > 0:
+        c["web_left"] -= 1
     if c is not None:
-        c["reports"].append({"industry": industry, "mode": mode, "time": datetime.now().isoformat()})
+        c["reports"].append({"industry": industry, "mode": "readable", "time": datetime.now().isoformat()})
     _save_auth(data)
 
 
@@ -521,11 +529,11 @@ async def auth_status(code: str = ""):
     data = _init_auth()
     if code == ADMIN_CODE:
         c = data.get("admin", {})
-        return {"valid": True, "admin": True, "quick_left": "无限", "deep_left": "无限"}
+        return {"valid": True, "admin": True, "web_left": "无限"}
     c = data.get(code)
     if not c:
         return {"valid": False}
-    return {"valid": True, "admin": False, "quick_left": c["quick_left"], "deep_left": c["deep_left"]}
+    return {"valid": True, "admin": False, "web_left": c.get("web_left", 0)}
 
 
 @app.get("/api/auth/my-reports")
@@ -538,36 +546,29 @@ async def auth_my_reports(code: str = ""):
     if not c:
         raise HTTPException(403, "无效授权码")
     results = []
-    out = PROJECT_ROOT / "output"
-    # 扫描服务器上所有报告
-    all_reports = {}
-    for f in out.glob("report_*.md"):
-        all_reports[f.stem.replace("report_", "")] = ("quick", f)
-    deep_dir = out / "deep"
-    if deep_dir.exists():
-        for d in deep_dir.iterdir():
-            if d.is_dir():
-                for f in d.glob("*.md"):
-                    all_reports[d.name] = ("deep", f)
-    # 只返回该授权码记录中实际存在的报告
+    readable_dir = PROJECT_ROOT / "output" / "readable"
+    seen = set()
     for r in c.get("reports", []):
         industry = r.get("industry", "")
         safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
-        if safe in all_reports:
-            mode, path = all_reports[safe]
-            results.append({"industry": industry, "mode": mode, "time": r.get("time",""), "content": path.read_text(encoding="utf-8")})
+        if safe in seen:
+            continue
+        if not (readable_dir / f"{safe}.html").exists():
+            continue
+        seen.add(safe)
+        results.append({"industry": industry, "mode": "网页版", "time": r.get("time", ""), "url": f"/readable/{quote(safe)}"})
     return results
 
 
 @app.post("/api/auth/generate-code")
-async def auth_generate_code(quick: int = 10, deep: int = 3, token: str = ""):
+async def auth_generate_code(web: int = 10, token: str = ""):
     if token != ADMIN_CODE:
         raise HTTPException(403, "仅管理员可操作")
     data = _load_auth()
     c = f"HM{uuid.uuid4().hex[:8].upper()}"
-    data[c] = {"quick_left": quick, "deep_left": deep, "reports": []}
+    data[c] = {"web_left": web, "reports": []}
     _save_auth(data)
-    return {"code": c, "quick_left": quick, "deep_left": deep}
+    return {"code": c, "web_left": web}
 
 
 @app.get("/api/auth/list-codes")
@@ -577,7 +578,7 @@ async def auth_list_codes(token: str = ""):
     data = _load_auth()
     result = {}
     for c, info in data.items():
-        result[c] = {"quick_left": info["quick_left"], "deep_left": info["deep_left"], "report_count": len(info.get("reports", []))}
+        result[c] = {"web_left": info.get("web_left", 0), "report_count": len(info.get("reports", []))}
     return result
 
 
@@ -603,7 +604,7 @@ async def generate(req: GenerateRequest):
         raise HTTPException(500, "LLM 未配置。请在 .env 中设置 LLM_API_KEY 和 LLM_BASE_URL。")
 
     # 检查快速研究缓存
-    c = _check_code(req.code, "quick")
+    c = _check_code(req.code)
     if not c:
         raise HTTPException(403, "授权码无效或次数已用完")
 
@@ -612,9 +613,9 @@ async def generate(req: GenerateRequest):
     report_path = PROJECT_ROOT / "output" / f"report_{safe}.md"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report, encoding="utf-8")
-    _use_code(req.code, "quick", industry, str(report_path))
-    ql = c.get("quick_left", 0)
-    return {"report": report, "path": str(report_path), "industry": industry, "quick_left": ql if ql < 0 else ql - 1}
+    _use_code(req.code, industry, str(report_path))
+    web_left = c.get("web_left", 0)
+    return {"report": report, "path": str(report_path), "industry": industry, "web_left": web_left if web_left < 0 else web_left - 1}
 
 
 @app.post("/api/generate-readable")
@@ -626,7 +627,7 @@ async def generate_readable(req: GenerateRequest):
     if not client:
         raise HTTPException(500, "LLM 未配置。请在 .env 中设置 LLM_API_KEY 和 LLM_BASE_URL。")
 
-    c = _check_code(req.code, "quick")
+    c = _check_code(req.code)
     if not c:
         raise HTTPException(403, "授权码无效或次数已用完")
 
@@ -650,8 +651,8 @@ async def generate_readable(req: GenerateRequest):
     html_path = readable_dir / f"{safe}.html"
     content_path.write_text(json.dumps(content, ensure_ascii=False, indent=2), encoding="utf-8")
     html_path.write_text(readable_html, encoding="utf-8")
-    _use_code(req.code, "quick", industry, str(html_path))
-    ql = c.get("quick_left", 0)
+    _use_code(req.code, industry, str(html_path))
+    web_left = c.get("web_left", 0)
     return {
         "industry": industry,
         "path": str(html_path),
@@ -665,7 +666,7 @@ async def generate_readable(req: GenerateRequest):
                 for section in content["sections"]
             ],
         },
-        "quick_left": ql if ql < 0 else ql - 1,
+        "web_left": web_left if web_left < 0 else web_left - 1,
     }
 
 
@@ -1295,7 +1296,7 @@ async def deep_research(req: GenerateRequest):
     industry = req.industry.strip()
     if not industry:
         raise HTTPException(400, "请输入行业名称")
-    c = _check_code(req.code, "deep")
+    c = _check_code(req.code)
     if not c:
         raise HTTPException(403, "授权码无效或次数已用完")
 
@@ -1332,7 +1333,7 @@ async def deep_research(req: GenerateRequest):
             deep_tasks[task_id]["phase"] = "done"
             deep_tasks[task_id]["report"] = report
             deep_tasks[task_id]["path"] = str(merged_path)
-            _use_code(deep_tasks[task_id].get("code", ""), "deep", industry, str(merged_path))
+            _use_code(deep_tasks[task_id].get("code", ""), industry, str(merged_path))
         except Exception as e:
             deep_tasks[task_id]["phase"] = "error"
             deep_tasks[task_id]["error"] = str(e)
@@ -1522,19 +1523,17 @@ async def admin_reports(token: str = ""):
     if token != ADMIN_PW:
         raise HTTPException(403, "未授权")
     results = []
-    output_dir = PROJECT_ROOT / "output"
-    if output_dir.exists():
-        # 快速研究
-        for f in sorted(output_dir.glob("report_*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
-            results.append({"type": "快速", "name": f.stem.replace("report_", ""), "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(), "size": f.stat().st_size, "path": str(f)})
-        # 深度研究：output/deep/{行业}/{行业}.md
-        deep_dir = output_dir / "deep"
-        if deep_dir.exists():
-            for d in sorted(deep_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
-                if d.is_dir():
-                    for f in sorted(d.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
-                        name = d.name  # 目录名就是行业名
-                        results.append({"type": "深度", "name": name, "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(), "size": f.stat().st_size, "path": str(f)})
+    readable_dir = PROJECT_ROOT / "output" / "readable"
+    if readable_dir.exists():
+        for f in sorted(readable_dir.glob("*.html"), key=lambda x: x.stat().st_mtime, reverse=True):
+            name = f.stem
+            if name.startswith(("v2_", "v3_", "v4_", "v5_", "v6_", "v_deep_", "test_", "toy_", "_verify")):
+                continue
+            results.append({
+                "type": "网页版", "name": name,
+                "time": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                "size": f.stat().st_size, "path": str(f), "url": f"/readable/{quote(name)}",
+            })
     return results
 
 
@@ -1587,11 +1586,12 @@ header p{color:var(--muted);font:700 12px 'Roboto Mono',monospace;letter-spacing
 .content img{max-width:100%;border:1px solid var(--line);box-shadow:5px 5px 0 var(--ink)}
 footer{text-align:center;padding:34px 0 0;color:var(--muted);font:700 11px 'Roboto Mono',monospace;letter-spacing:.06em}
 footer a{color:var(--ink);background:var(--sky);border:1px solid var(--line);padding:2px 8px;text-decoration:none}
-@media(max-width:680px){.container{padding:28px 14px 56px}.content{padding:24px 18px}header{display:block}header p{margin-top:10px}}
+.back-actions{display:flex;gap:10px;flex-wrap:wrap}.back-readable{display:inline-flex;align-items:center;padding:9px 13px;border:1px solid var(--line);background:var(--sky);color:var(--ink);font:800 12px 'Noto Sans SC',sans-serif;text-decoration:none;box-shadow:4px 4px 0 var(--ink)}.back-readable:hover{background:var(--coral)}
+@media(max-width:680px){.container{padding:28px 14px 56px}.content{padding:24px 18px}header{display:block}header p{margin-top:10px}.back-actions{margin-top:14px}}
 </style>
 </head>
 <body>
-<div class="container"><header><h1>{title}</h1><p>行业白皮书 · trendgrab 生成 · {date}</p></header>
+<div class="container"><header><div><h1>{title}</h1><p>行业白皮书 · trendgrab 生成 · {date}</p></div><div class="back-actions">{back_link}</div></header>
 <div class="content" id="content"></div>
 <footer>Powered by trendgrab · <a href="/">生成你自己的报告</a></footer></div>
 <script>document.getElementById('content').innerHTML=marked.parse({content_json});</script>
@@ -1613,6 +1613,7 @@ async def view_deep_report(name: str):
         SHARE_HTML
         .replace("{title}", f"{safe} 深度报告")
         .replace("{date}", datetime.now().strftime("%Y-%m-%d"))
+        .replace("{back_link}", f'<a class="back-readable" href="/readable/{quote(safe)}">返回网页版</a>')
         .replace("{content_json}", json.dumps(content, ensure_ascii=False))
     )
 
@@ -1644,7 +1645,7 @@ async def share_report(sid: str):
         return HTMLResponse(path.read_text(encoding="utf-8"))
     content = path.read_text(encoding="utf-8")
     title = entry["industry"]
-    return HTMLResponse(SHARE_HTML.replace("{title}", title).replace("{date}", entry.get("date", "")).replace("{content_json}", json.dumps(content, ensure_ascii=False)))
+    return HTMLResponse(SHARE_HTML.replace("{title}", title).replace("{date}", entry.get("date", "")).replace("{back_link}", '<a class="back-readable" href="/">返回首页</a>').replace("{content_json}", json.dumps(content, ensure_ascii=False)))
 
 
 @app.post("/api/share")
@@ -1727,7 +1728,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.37.0", "date": "2026-08-08"}
+    return {"version": "2.38.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──

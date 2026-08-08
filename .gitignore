@@ -13,6 +13,7 @@ venv/
 
 # Output
 output/
+old/
 
 # IDE
 .vscode/
