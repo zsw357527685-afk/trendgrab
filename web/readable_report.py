@@ -670,7 +670,7 @@ def generate_from_deep_report(
             for result in search_web(f"{industry} {query}", 5):
                 add_store_source(result, "淘宝/1688头部店铺")
         for name, url in (
-            ("淘宝", f"https://www.taobao.com/list/product/{quote(industry)}.htm"),
+            ("淘宝", f"https://s.taobao.com/search?q={quote(industry)}&tab=shop"),
             ("1688", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(industry)}"),
         ):
             add_store_source({
@@ -994,10 +994,13 @@ def render_html(content: dict[str, Any]) -> str:
         f'<a href="{html.escape(deep_report_url, quote=True)}" target="_blank" rel="noopener noreferrer">查看原始深度报告</a>'
         if deep_report_url else ""
     )
-    taobao_verify_url = f"https://www.taobao.com/list/product/{quote(content['industry'])}.htm"
-    verify_link = (
-        f'<a class="verify-link" href="{html.escape(taobao_verify_url, quote=True)}" '
-        f'target="_blank" rel="noopener noreferrer">去淘宝按销量核实 →</a>'
+    taobao_shop_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=shop"
+    taobao_item_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=all"
+    verify_links = (
+        f'<a class="verify-link" href="{html.escape(taobao_shop_url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">淘宝按店铺核实 →</a>'
+        f'<a class="verify-link verify-link-alt" href="{html.escape(taobao_item_url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">淘宝按宝贝核实 →</a>'
     )
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1026,9 +1029,9 @@ def render_html(content: dict[str, Any]) -> str:
 </style><style>
 .section-media-link{{display:block;text-decoration:none;color:inherit}}.section-media-link:hover .section-media{{box-shadow:8px 8px 0 var(--ink)}}.scene-link{{display:block;text-decoration:none;color:inherit}}.section-analysis p{{margin:0 0 12px}}.section-analysis ul{{margin:12px 0 0;padding-left:18px}}.section-analysis li{{margin:0 0 6px}}
 </style><style>
-.nav-links{{display:flex;gap:14px;align-items:center}}.nav-links a{{color:inherit;text-decoration:none;white-space:nowrap}}.decision-zone{{display:grid;gap:12px;justify-items:start}}.verify-link{{display:inline-flex;align-items:center;padding:10px 14px;border:1px solid var(--ink);background:var(--coral);color:var(--ink);font:800 14px 'Noto Sans SC',sans-serif;text-decoration:none;box-shadow:5px 5px 0 var(--ink)}}.verify-link:hover{{background:var(--lime)}}
+.nav-links{{display:flex;gap:14px;align-items:center}}.nav-links a{{color:inherit;text-decoration:none;white-space:nowrap}}.decision-zone{{display:grid;gap:12px;justify-items:start}}.verify-zone{{display:flex;gap:10px;flex-wrap:wrap}}.verify-link{{display:inline-flex;align-items:center;padding:10px 14px;border:1px solid var(--ink);background:var(--coral);color:var(--ink);font:800 14px 'Noto Sans SC',sans-serif;text-decoration:none;box-shadow:5px 5px 0 var(--ink)}}.verify-link-alt{{background:var(--sky)}}.verify-link:hover{{background:var(--lime)}}
 </style></head><body>
 <nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><div class="nav-links">{deep_report_link}<a href="#sources">查看资料来源 ↓</a></div></div></nav>
-<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><div class="decision-zone"><p class="decision">{html.escape(content["decision"])}</p>{verify_link}</div></div></div></header>
+<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><div class="decision-zone"><p class="decision">{html.escape(content["decision"])}</p><div class="verify-zone">{verify_links}</div></div></div></div></header>
 <main>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页基于公开资料整理；没有可靠支撑的地方会明确保留“待核实”。</p><ol>{sources_html}</ol></div></section></main>
 <footer><div class="wrap">TREND_GRAB · 工厂接单研判 · 接单前仍需核实价格、认证和客户条件</div></footer></body></html>'''
