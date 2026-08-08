@@ -39,7 +39,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.14.0")
+app = FastAPI(title="trend_grab", version="2.15.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -888,17 +888,130 @@ def _gen_deep(industry: str) -> str:
     return resp.choices[0].message.content
 
 
+def _run_deep_research(industry: str, safe: str, merged_path: Path, on_progress=None, on_keywords=None) -> str:
+    """深度研究主流程：主报告 + 并行章节 + 概览 + 最终编辑。接口和工厂接单版共用。"""
+    output_dir = merged_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    def progress(phase: str, value: int) -> None:
+        if on_progress:
+            on_progress(phase, value)
+
+    progress("main", 0)
+    main_report = _gen_report(industry, "quick")
+    (PROJECT_ROOT / "output" / f"report_{safe}.md").write_text(main_report, encoding="utf-8")
+    trade_extra = _fetch_trade_data(industry)
+    sub_keywords = _extract_keywords(main_report, industry)
+    parent_kw = _get_parent(industry)
+    all_kws = [industry] + sub_keywords + [parent_kw]
+    if on_keywords:
+        on_keywords(all_kws)
+    progress("main", 15)
+
+    chapters = [None] * len(DEEP_CHAPTERS)
+    all_dims = {
+        **DEEP_DIMENSIONS,
+        "supply_chain": DIMENSIONS.get("supply_chain", []),
+        "trends": DIMENSIONS.get("trends", []),
+        "yiwu": DIMENSIONS.get("yiwu", []),
+    }
+
+    def _gen_chapter(idx: int):
+        ch = DEEP_CHAPTERS[idx]
+        snippets = []
+        seen = set()
+        for dim_name in ch["dims"]:
+            for q in all_dims.get(dim_name, []):
+                for kw in all_kws[:3]:
+                    results = search_web(f"{kw} {q}", max_results=4)
+                    for r in results:
+                        url = r.get('url', '')
+                        if url and url not in seen:
+                            domain = re.search(r'https?://([^/]+)', url)
+                            if domain and any(d in domain.group(1) for d in SKIP_DOMAINS):
+                                continue
+                            seen.add(url)
+                            snippets.append(f"{r['title']}\n{r['snippet']}\n{url}")
+        deep = ""
+        for url in list(seen)[:5]:
+            c = fetch_content(url)
+            if c:
+                deep += f"\n{url}\n{c[:2500]}\n---\n"
+        resp = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": ch["system"]},
+                {"role": "user", "content": "为「" + industry + "」撰写「" + ch['title'] + "」章节。\n\n" + (trade_extra or "") + "\n\n研究材料：\n" + "\n\n".join(snippets)[:8000] + "\n\n深度页面：\n" + deep[:6000]},
+            ],
+            temperature=0.7,
+            max_tokens=4000,
+        )
+        chapters[idx] = resp.choices[0].message.content
+
+    with ThreadPoolExecutor(max_workers=len(DEEP_CHAPTERS)) as pool:
+        futures = [pool.submit(_gen_chapter, i) for i in range(len(DEEP_CHAPTERS))]
+        completed = 0
+        for future in as_completed(futures):
+            future.result()
+            completed += 1
+            progress("chapters", 15 + int(completed / len(DEEP_CHAPTERS) * 60))
+
+    progress("stitch", 80)
+    intro_resp = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[{"role": "user", "content": f"为以下行业报告写一篇800-1000字的行业概览。用4-5段文字，不使用###小标题，直接分段。内容覆盖：全球市场规模与增速（多口径对比）、中国在全球产业链的位置（制造份额、出口比例）、消费者结构变化、主要子品类或价格带分化、产业地理分布。每个数据点保留[↗](URL)引用。不用加粗。语气专业平实，不是聊天，是行业分析。\n\n{main_report[:8000]}"}],
+        temperature=0.5,
+        max_tokens=800,
+    )
+    overview = intro_resp.choices[0].message.content
+
+    report = f"# {industry} 深度策略白皮书\n\n"
+    report += f"> {datetime.now().strftime('%Y年%m月')} | 基于行业全景和{len(all_kws)}个关联品类的交叉分析\n\n"
+    report += f"## 一、行业概览\n\n{overview.strip()}\n\n---\n\n"
+    nums = ["二", "三", "四", "五", "六", "七"][:len(DEEP_CHAPTERS)]
+    for i, ch in enumerate(chapters):
+        if ch:
+            ch_clean = re.sub(r'^#.*$', '', ch, flags=re.MULTILINE).strip()
+            report += f"## {nums[i]}、{DEEP_CHAPTERS[i]['title']}\n\n{ch_clean}\n\n---\n\n"
+    report += "\n\n*第一章为行业概览，第二至六章逐章独立搜索生成。数据来源以 [↗](URL) 格式标注于各章节内。*"
+
+    progress("edit", 90)
+    edit_prompt = f"""你是资深商业编辑。对以下报告进行最终润色。
+
+## 最优先任务：加小标题
+每章必须有3-5个###小标题。这是硬性要求，不是建议。每章开头先检查有几个###，不到3个就补到3个。小标题写具体判断句如"医用级材质正在从加分项变成入场券"，不写"概述""背景""市场分析"等空洞词。
+
+## 其他任务：
+1. 去重：同一公司背景、产品参数、数据，只在一处完整讲述，后文用"如前所述"。
+2. 挂钩：每章开头接上章结尾。
+3. 观点前置：小节开头放判断句，数据和案例在后。
+
+## 去AI味：
+- 禁止Markdown加粗（**）和破折号（——）
+- 禁止"首先其次然后最后""这说明""因此""随着时代发展""这一趋势值得关注"
+- 缩小叙事半径，段落长短交替
+
+不要写前言或说明，直接输出报告正文。[↗](URL)链接全部保留。"""
+    edit_resp = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[{"role": "user", "content": f"{edit_prompt}\n\n{report[:30000]}"}],
+        temperature=0.5,
+        max_tokens=16000,
+    )
+    report = edit_resp.choices[0].message.content
+
+    merged_path.write_text(report, encoding="utf-8")
+    progress("done", 100)
+    return report
+
+
 def _ensure_deep_report(industry: str) -> Path:
     """工厂接单版强制先有深度报告：已存在就直接用，否则自动生成一份。"""
     safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80][:50]
     path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
     if path.exists():
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    report = _gen_deep(industry)
-    if not report.lstrip().startswith("#"):
-        report = f"# {industry} 深度分析报告\n\n{report}"
-    path.write_text(report, encoding="utf-8")
+    _run_deep_research(industry, safe, path)
     return path
 
 
@@ -993,111 +1106,17 @@ async def deep_research(req: GenerateRequest):
 
     def run():
         try:
-            output_dir.mkdir(parents=True, exist_ok=True)
+            def progress(phase: str, value: int) -> None:
+                deep_tasks[task_id]["phase"] = phase
+                deep_tasks[task_id]["progress"] = value
 
-            # 1. 主报告（快速模式）→ 获取行业全景 + 提取关键词
-            deep_tasks[task_id]["phase"] = "main"
-            main_report = _gen_report(industry, "quick")
-            (PROJECT_ROOT / "output" / f"report_{safe}.md").write_text(main_report, encoding="utf-8")
-            # 获取贸易数据（如果行业有对应HS编码）
-            trade_extra = _fetch_trade_data(industry)
-            sub_keywords = _extract_keywords(main_report, industry)
-            parent_kw = _get_parent(industry)
-            all_kws = [industry] + sub_keywords + [parent_kw]  # 主行业 + 3个子 + 1个上级
-            deep_tasks[task_id]["keywords"] = all_kws
-            deep_tasks[task_id]["progress"] = 15
-
-            # 2. 每个章节用自己的搜索词并行生成
-            chapters = [None] * len(DEEP_CHAPTERS)
-            all_dims = {**DEEP_DIMENSIONS, "supply_chain": DIMENSIONS.get("supply_chain", []), "trends": DIMENSIONS.get("trends", []), "yiwu": DIMENSIONS.get("yiwu", [])}
-
-            def _gen_chapter(idx):
-                ch = DEEP_CHAPTERS[idx]
-                # 为这个章节搜集数据（用该章的维度和所有关键词）
-                snippets = []
-                seen = set()
-                for dim_name in ch["dims"]:
-                    for q in all_dims.get(dim_name, []):
-                        for kw in all_kws[:3]:  # 取主行业+前2个子词
-                            results = search_web(f"{kw} {q}", max_results=4)
-                            for r in results:
-                                url = r.get('url', '')
-                                if url and url not in seen:
-                                    domain = re.search(r'https?://([^/]+)', url)
-                                    if domain and any(d in domain.group(1) for d in SKIP_DOMAINS):
-                                        continue
-                                    seen.add(url)
-                                    snippets.append(f"{r['title']}\n{r['snippet']}\n{url}")
-                # 深读
-                deep = ""
-                for url in list(seen)[:5]:
-                    c = fetch_content(url)
-                    if c: deep += f"\n{url}\n{c[:2500]}\n---\n"
-                # 生成
-                resp = client.chat.completions.create(
-                    model=LLM_MODEL,
-                    messages=[
-                        {"role": "system", "content": ch["system"]},
-                        {"role": "user", "content": "为「" + industry + "」撰写「" + ch['title'] + "」章节。\n\n" + (trade_extra or "") + "\n\n研究材料：\n" + "\n\n".join(snippets)[:8000] + "\n\n深度页面：\n" + deep[:6000]},
-                    ],
-                    temperature=0.7, max_tokens=4000,
-                )
-                chapters[idx] = resp.choices[0].message.content
-
-            with ThreadPoolExecutor(max_workers=len(DEEP_CHAPTERS)) as pool:
-                futures = [pool.submit(_gen_chapter, i) for i in range(len(DEEP_CHAPTERS))]
-                completed = 0
-                for f in as_completed(futures):
-                    f.result()
-                    completed += 1
-                    deep_tasks[task_id]["progress"] = 15 + int(completed / len(DEEP_CHAPTERS) * 60)
-
-            # 3. 生成扉页摘要（用LLM从主报告提取精简概览）
-            deep_tasks[task_id]["phase"] = "stitch"
-            intro_resp = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[{"role": "user", "content": f"为以下行业报告写一篇800-1000字的行业概览。用4-5段文字，不使用###小标题，直接分段。内容覆盖：全球市场规模与增速（多口径对比）、中国在全球产业链的位置（制造份额、出口比例）、消费者结构变化、主要子品类或价格带分化、产业地理分布。每个数据点保留[↗](URL)引用。不用加粗。语气专业平实，不是聊天，是行业分析。\n\n{main_report[:8000]}"}],
-                temperature=0.5, max_tokens=800,
+            report = _run_deep_research(
+                industry,
+                safe,
+                merged_path,
+                on_progress=progress,
+                on_keywords=lambda keywords: deep_tasks[task_id].__setitem__("keywords", keywords),
             )
-            overview = intro_resp.choices[0].message.content
-
-            report = f"# {industry} 深度策略白皮书\n\n"
-            report += f"> {datetime.now().strftime('%Y年%m月')} | 基于行业全景和{len(all_kws)}个关联品类的交叉分析\n\n"
-            report += f"## 一、行业概览\n\n{overview.strip()}\n\n---\n\n"
-            nums = ["二", "三", "四", "五", "六", "七"][:len(DEEP_CHAPTERS)]
-            for i, ch in enumerate(chapters):
-                if ch:
-                    # 清除章节内容中的一级标题，避免嵌套混乱
-                    ch_clean = re.sub(r'^#.*$', '', ch, flags=re.MULTILINE).strip()
-                    report += f"## {nums[i]}、{DEEP_CHAPTERS[i]['title']}\n\n{ch_clean}\n\n---\n\n"
-            report += "\n\n*第一章为行业概览，第二至六章逐章独立搜索生成。数据来源以 [↗](URL) 格式标注于各章节内。*"
-
-            # 4.5 最终编辑：去重+挂钩+观点前置+收束
-            deep_tasks[task_id]["phase"] = "edit"
-            edit_prompt = f"""你是资深商业编辑。对以下报告进行最终润色。
-
-## 最优先任务：加小标题
-每章必须有3-5个###小标题。这是硬性要求，不是建议。每章开头先检查有几个###，不到3个就补到3个。小标题写具体判断句如"医用级材质正在从加分项变成入场券"，不写"概述""背景""市场分析"等空洞词。
-
-## 其他任务：
-1. 去重：同一公司背景、产品参数、数据，只在一处完整讲述，后文用"如前所述"。
-2. 挂钩：每章开头接上章结尾。
-3. 观点前置：小节开头放判断句，数据和案例在后。
-
-## 去AI味：
-- 禁止Markdown加粗（**）和破折号（——）
-- 禁止"首先其次然后最后""这说明""因此""随着时代发展""这一趋势值得关注"
-- 缩小叙事半径，段落长短交替
-
-不要写前言或说明，直接输出报告正文。[↗](URL)链接全部保留。"""
-            resp = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[{"role": "user", "content": f"{edit_prompt}\n\n{report[:30000]}"}],
-                temperature=0.5, max_tokens=16000,
-            )
-            report = resp.choices[0].message.content
-
-            merged_path.write_text(report, encoding="utf-8")
             deep_tasks[task_id]["progress"] = 100
             deep_tasks[task_id]["phase"] = "done"
             deep_tasks[task_id]["report"] = report
@@ -1453,7 +1472,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.14.0", "date": "2026-08-08"}
+    return {"version": "2.15.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
