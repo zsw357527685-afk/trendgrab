@@ -901,7 +901,7 @@ def _section_frame(section: dict[str, Any], body: str, source_map: dict[str, dic
 </section>'''
 
 
-def _render_section(section: dict[str, Any], source_map: dict[str, dict[str, Any]]) -> str:
+def _render_section(section: dict[str, Any], source_map: dict[str, dict[str, Any]], verify_html: str = "") -> str:
     """不同接单板块使用不同信息布局，避免整页都是同一种卡片。"""
     cards = section["cards"]
     section_id = section["id"]
@@ -916,6 +916,8 @@ def _render_section(section: dict[str, Any], source_map: dict[str, dict[str, Any
             f'<article class="product-note note-{index}"><span>0{index + 1}</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>'
             for index, card in enumerate(cards)
         ) + '</div>'
+        if section_id == "players" and verify_html:
+            body += f'<div class="verify-zone">{verify_html}</div>'
     elif section_id in {"competition", "cost_profit"}:
         body = structured + '<div class="price-flow">' + "".join(
             f'<article class="price-stop"><span>STEP {index + 1}</span><b>{html.escape(card["title"])}</b><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>{"<i class=\"flow-arrow\">→</i>" if index < len(cards) - 1 else ""}'
@@ -979,7 +981,21 @@ def render_html(content: dict[str, Any]) -> str:
         if image_html and not has_section_images else ""
     )
     source_map = {source["id"]: source for source in content["sources"]}
-    sections_html = "".join(_render_section(section, source_map) for section in content["sections"])
+    taobao_shop_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=shop"
+    taobao_item_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=all"
+    ali1688_url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(content['industry'])}"
+    verify_links = (
+        f'<a class="verify-link" href="{html.escape(taobao_shop_url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">淘宝按店铺核实 →</a>'
+        f'<a class="verify-link verify-link-alt" href="{html.escape(taobao_item_url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">淘宝按宝贝核实 →</a>'
+        f'<a class="verify-link verify-link-alt" href="{html.escape(ali1688_url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">1688按店铺核实 →</a>'
+    )
+    sections_html = "".join(
+        _render_section(section, source_map, verify_links if section["id"] == "players" else "")
+        for section in content["sections"]
+    )
     sources_html = "".join(
         f'<li><span class="source-meta">{html.escape(source.get("topic", "资料"))}{" · 深读" if source.get("deep_read") else ""}</span>'
         f'<span class="source-title">[{html.escape(source["id"])}] {html.escape(source["title"])}</span></li>'
@@ -991,17 +1007,6 @@ def render_html(content: dict[str, Any]) -> str:
     deep_report_link = (
         f'<a href="{html.escape(deep_report_url, quote=True)}" target="_blank" rel="noopener noreferrer">查看原始深度报告</a>'
         if deep_report_url else ""
-    )
-    taobao_shop_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=shop"
-    taobao_item_url = f"https://s.taobao.com/search?q={quote(content['industry'])}&tab=all"
-    ali1688_url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(content['industry'])}"
-    verify_links = (
-        f'<a class="verify-link" href="{html.escape(taobao_shop_url, quote=True)}" '
-        f'target="_blank" rel="noopener noreferrer">淘宝按店铺核实 →</a>'
-        f'<a class="verify-link verify-link-alt" href="{html.escape(taobao_item_url, quote=True)}" '
-        f'target="_blank" rel="noopener noreferrer">淘宝按宝贝核实 →</a>'
-        f'<a class="verify-link verify-link-alt" href="{html.escape(ali1688_url, quote=True)}" '
-        f'target="_blank" rel="noopener noreferrer">1688按店铺核实 →</a>'
     )
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1033,6 +1038,6 @@ def render_html(content: dict[str, Any]) -> str:
 .nav-links{{display:flex;gap:14px;align-items:center}}.nav-links a{{color:inherit;text-decoration:none;white-space:nowrap}}.decision-zone{{display:grid;gap:12px;justify-items:start}}.verify-zone{{display:flex;gap:10px;flex-wrap:wrap}}.verify-link{{display:inline-flex;align-items:center;padding:10px 14px;border:1px solid var(--ink);background:var(--coral);color:var(--ink);font:800 14px 'Noto Sans SC',sans-serif;text-decoration:none;box-shadow:5px 5px 0 var(--ink)}}.verify-link-alt{{background:var(--sky)}}.verify-link:hover{{background:var(--lime)}}
 </style></head><body>
 <nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><div class="nav-links">{deep_report_link}<a href="#sources">查看资料来源 ↓</a></div></div></nav>
-<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><div class="decision-zone"><p class="decision">{html.escape(content["decision"])}</p><div class="verify-zone">{verify_links}</div></div></div></div></header>
+<header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><div class="decision-zone"><p class="decision">{html.escape(content["decision"])}</p></div></div></div></header>
 <main>{visual_board_html}{sections_html}<section id="sources" class="sources"><div class="wrap"><h2>资料来源</h2><p>本页基于公开资料整理；没有可靠支撑的地方会明确保留“待核实”。</p><ol>{sources_html}</ol></div></section></main>
 <footer><div class="wrap">TREND_GRAB · 工厂接单研判 · 接单前仍需核实价格、认证和客户条件</div></footer></body></html>'''
