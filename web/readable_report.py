@@ -88,7 +88,7 @@ def _normalise_data_points(value: Any, valid_source_ids: set[str]) -> list[dict[
     if not isinstance(value, list):
         return []
     points: list[dict[str, Any]] = []
-    for item in value[:5]:
+    for item in value[:8]:
         if not isinstance(item, dict):
             continue
         label = _text(item.get("label"), "")
@@ -127,7 +127,7 @@ def _normalise_chart(value: Any, valid_source_ids: set[str]) -> dict[str, Any] |
     values = value.get("values")
     if not isinstance(labels, list) or not isinstance(values, list):
         return None
-    if not 2 <= len(labels) <= 8 or len(labels) != len(values):
+    if not 2 <= len(labels) <= 10 or len(labels) != len(values):
         return None
     numbers: list[float] = []
     for item in values:
@@ -142,6 +142,8 @@ def _normalise_chart(value: Any, valid_source_ids: set[str]) -> dict[str, Any] |
         return None
     unit = _text(value.get("unit"), "")
     if not unit:
+        return None
+    if ("亿美元" in unit and "亿元" in unit) or ("美元" in unit and "人民币" in unit):
         return None
     labels_text = " ".join(str(label) for label in labels)
     conflicting_pairs = (
@@ -183,14 +185,14 @@ def _normalise_cards(value: Any, valid_source_ids: set[str]) -> list[dict[str, A
     if not isinstance(value, list):
         return []
     cards: list[dict[str, Any]] = []
-    for item in value[:4]:
+    for item in value[:5]:
         if isinstance(item, dict):
             references = item.get("sources", [])
             references = references if isinstance(references, list) else []
             cards.append({
                 "title": _text(item.get("title"), "待确认"),
                 "text": _text(item.get("text")),
-                "sources": [str(item) for item in references[:2] if str(item) in valid_source_ids],
+                "sources": [str(item) for item in references[:3] if str(item) in valid_source_ids],
             })
         elif isinstance(item, str) and item.strip():
             cards.append({"title": "要点", "text": item.strip(), "sources": []})
@@ -528,8 +530,8 @@ JSON 必须符合：
     {{
       "id":"overview|history|hot_topics|competition|cost_profit|supply_chain|channels|barriers|trends|risks|next",
       "title":"...",
-      "summary":"不超过35字的判断句，只给结论，不罗列数据",
-      "analysis":"180到260字的完整分析段落",
+      "summary":"不超过45字的判断句，只给结论，不罗列数据",
+      "analysis":"300到500字，分成2-4个短段落，用具体内容展开",
       "data_points":[
         {{"label":"数据名称（不超过16字）","value":"具体数值","note":"口径或补充说明（不超过20字）","sources":["S1"]}}
       ],
@@ -544,7 +546,7 @@ JSON 必须符合：
       }},
       "sources":["S1","S2"],
       "image_queries":["具体产品/场景搜索词1","具体产品/场景搜索词2"],
-      "cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]
+      "cards":[{{"title":"...","text":"150到200字，写具体内容","sources":["S1","S2"]}}]
     }}
   ]
 }}
@@ -553,7 +555,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读研究资料，再写事实和分析，最后从资料里挑来源编号。禁止先写内容再反向找来源，禁止凭印象补来源。资料里没有的事实不要写，资料里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 从上述 11 个 id 中选择 5-9 个，顺序由本次资料决定，优先保留资料里有具体数据和结论的章节，不要为了框架硬凑，也不要因为框架限制丢掉有价值内容：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），cost_profit=成本与利润（价格带、成本结构、利润在哪），supply_chain=产业带与供应链（产地、供应链、代工能力），channels=渠道与订单（谁在给单、走什么渠道），barriers=认证与门槛（认证、资质、工艺门槛），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
+sections 从上述 11 个 id 中选择 6-10 个，顺序由本次资料决定，优先保留资料里有具体数据和结论的章节，不要为了框架硬凑，也不要因为框架限制丢掉有价值内容：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），cost_profit=成本与利润（价格带、成本结构、利润在哪），supply_chain=产业带与供应链（产地、供应链、代工能力），channels=渠道与订单（谁在给单、走什么渠道），barriers=认证与门槛（认证、资质、工艺门槛），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。用白皮书里的具体内容，不要过度压缩；表述像给工厂老板讲人话，不要书面报告腔；保留具体数字、案例、价格、工厂线索。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 300-500 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 5 张卡片；cards 的 text 必须直接解释卡片 title，用 150-200 字展开具体内容；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，3-8 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-10），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
 
 研究资料（已按订单、产品、渠道、门槛、风险均衡挑选；标有“深读”的资料正文更完整）：
 {evidence}"""
@@ -561,7 +563,7 @@ sections 从上述 11 个 id 中选择 5-9 个，顺序由本次资料决定，�
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.35,
-        max_tokens=5000,
+        max_tokens=12000,
     )
     content = normalise_content(
         _json_from_response(response.choices[0].message.content), industry, sources,
@@ -630,7 +632,7 @@ def generate_from_deep_report(
         deep_text_by_id = {"S1": deep_text}
         evidence_text = deep_text
 
-    evidence = evidence_text[:45000]
+    evidence = evidence_text[:60000]
     prompt = f"""你是服务于义乌及产业带工厂老板的产业情报分析师，读者主要做代工（OEM/ODM）或走量批发。以下是一份已经完成的「{industry}」深度研究报告，引用已经替换成 [S#] 编号。请只从这份深度报告里选取对工厂接单、代工、走量批发真正有用的内容，做成《工厂接单研判页》。
 
 深度报告通常按五章组织：行业概述、发展路径、近期热点、竞争格局、趋势预测。请以这五章为骨架组织老板版：行业概述转成“市场、规模、产业链与工厂位置”，发展路径转成“品类怎么走到今天、哪些节点影响现在”，近期热点转成“订单、爆款与正在发生的事”，竞争格局转成“玩家、代工、渠道与利润分布”，趋势预测转成“接下来会怎么变、什么款有空间”，再补充风险和下一步验证。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。不要点名奢侈品牌或大牌做案例；如果资料只有品牌案例，就说成“经典大牌款”或“高端品牌款”。
@@ -646,8 +648,8 @@ JSON 必须符合：
     {{
       "id":"overview|history|hot_topics|competition|cost_profit|supply_chain|channels|barriers|trends|risks|next",
       "title":"...",
-      "summary":"不超过35字的判断句，只给结论，不罗列数据",
-      "analysis":"180到260字的完整分析段落",
+      "summary":"不超过45字的判断句，只给结论，不罗列数据",
+      "analysis":"300到500字，分成2-4个短段落，用具体内容展开",
       "data_points":[
         {{"label":"数据名称（不超过16字）","value":"具体数值","note":"口径或补充说明（不超过20字）","sources":["S1"]}}
       ],
@@ -662,7 +664,7 @@ JSON 必须符合：
       }},
       "sources":["S1","S2"],
       "image_queries":["具体产品/场景搜索词1","具体产品/场景搜索词2"],
-      "cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]
+      "cards":[{{"title":"...","text":"150到200字，写具体内容","sources":["S1","S2"]}}]
     }}
   ]
 }}
@@ -671,7 +673,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读深度报告，再写事实和分析，最后从报告里挑 [S#] 编号。禁止先写内容再反向找来源，禁止凭印象补来源。报告里没有的事实不要写，报告里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 从上述 11 个 id 中选择 5-9 个，顺序由深度报告内容决定，优先保留报告里有具体数据和结论的章节，不要为了框架硬凑，也不要因为框架限制丢掉有价值内容：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），cost_profit=成本与利润（价格带、成本结构、利润在哪），supply_chain=产业带与供应链（产地、供应链、代工能力），channels=渠道与订单（谁在给单、走什么渠道），barriers=认证与门槛（认证、资质、工艺门槛），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
+sections 从上述 11 个 id 中选择 6-10 个，顺序由深度报告内容决定，优先保留报告里有具体数据和结论的章节，不要为了框架硬凑，也不要因为框架限制丢掉有价值内容：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），cost_profit=成本与利润（价格带、成本结构、利润在哪），supply_chain=产业带与供应链（产地、供应链、代工能力），channels=渠道与订单（谁在给单、走什么渠道），barriers=认证与门槛（认证、资质、工艺门槛），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。用深度报告里的具体内容，不要过度压缩；表述像给工厂老板讲人话，不要书面报告腔；保留具体数字、案例、价格、工厂线索。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 300-500 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 5 张卡片；cards 的 text 必须直接解释卡片 title，用 150-200 字展开具体内容；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，3-8 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-10），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
 
 深度报告（已替换为 [S#] 编号）：
 {evidence}"""
@@ -679,7 +681,7 @@ sections 从上述 11 个 id 中选择 5-9 个，顺序由深度报告内容决�
         model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.35,
-        max_tokens=5000,
+        max_tokens=12000,
     )
     content = normalise_content(
         _json_from_response(response.choices[0].message.content), industry, sources,
