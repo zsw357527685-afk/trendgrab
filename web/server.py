@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.36.0")
+app = FastAPI(title="trend_grab", version="2.37.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -1550,22 +1550,47 @@ async def admin_report_content(token: str = "", path: str = ""):
 
 # ── 分享页面 ─────────────────────────────────────────────
 
-SHARE_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{title}</title>
+SHARE_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{title}</title>
 <script src="/marked.min.js"></script>
-<style>:root{{--bg:#FAFAF7;--paper:#fff;--ink:#1A1A24;--muted:#8A8898;--border:#E2DDD4;--gold:#B8871A;}}
-*{{margin:0;padding:0;box-sizing:border-box}}body{{font:15px/1.8 system-ui,sans-serif;background:var(--bg);color:var(--ink)}}
-.container{{max-width:860px;margin:0 auto;padding:40px 20px}}
-header{{text-align:center;padding:40px 0;border-bottom:1px solid var(--border);margin-bottom:32px}}
-h1{{font-size:24px;font-weight:700}}header p{{color:var(--muted);margin-top:8px;font-size:14px}}
-.content h2{{font-size:20px;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}}
-.content h3{{font-size:16px;margin:20px 0 8px}}
-.content p{{margin:8px 0}}.content table{{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}}
-.content td,.content th{{border:1px solid var(--border);padding:8px 12px;text-align:left}}.content th{{background:#f5f5f4}}
-.content blockquote{{border-left:3px solid var(--gold);padding:4px 16px;margin:12px 0;color:var(--muted)}}
-.content a{{color:var(--gold)}}footer{{text-align:center;padding:40px;color:var(--muted);font-size:12px}}
-.content{{background:var(--paper);border:1px solid var(--border);border-radius:8px;padding:40px 48px}}
-@media(max-width:640px){{.content{{padding:24px 20px}}}}
-</style></head><body>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@600;700;900&family=Roboto+Mono:wght@500;700&display=swap');
+:root{--paper:#f2efe5;--paper-2:#e8e3d6;--white:#fffdf7;--ink:#171713;--coral:#ff6846;--lime:#d9f650;--sun:#ffc933;--sky:#9fd8ff;--muted:#67665f;--line:#1c1c1c}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font:16px/1.85 'Noto Sans SC',system-ui,sans-serif;color:var(--ink);background:radial-gradient(circle at 12% 6%,rgba(217,246,80,.28),transparent 18rem),linear-gradient(rgba(23,23,19,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(23,23,19,.035) 1px,transparent 1px),var(--paper);background-size:auto,48px 48px,48px 48px,auto}
+.container{max-width:980px;margin:0 auto;padding:48px 24px 72px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:10px 0 26px;border-bottom:4px solid var(--line);margin-bottom:28px}
+header h1{font:900 clamp(30px,5vw,52px)/1.05 'Noto Serif SC',serif;letter-spacing:-.04em;max-width:720px}
+header p{color:var(--muted);font:700 12px 'Roboto Mono',monospace;letter-spacing:.08em}
+.content{background:var(--white);border:1px solid var(--line);box-shadow:9px 9px 0 var(--ink);padding:42px 48px}
+.content h1{font:900 34px/1.15 'Noto Serif SC',serif;margin:10px 0 18px}
+.content h2{font:900 26px/1.2 'Noto Serif SC',serif;margin:36px 0 14px;padding:4px 0 8px;border-bottom:3px solid var(--coral)}
+.content h3{font:800 19px/1.3 'Noto Serif SC',serif;margin:26px 0 10px}
+.content p{margin:10px 0}
+.content ul,.content ol{margin:10px 0;padding-left:24px}
+.content li{margin:6px 0}
+.content strong{font-weight:900}
+.content a{color:var(--ink);background:var(--lime);border:1px solid var(--line);padding:1px 5px;text-decoration:none;box-shadow:2px 2px 0 var(--ink)}
+.content a:hover{background:var(--coral)}
+.content table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;border:1px solid var(--line)}
+.content th,.content td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+.content th{background:var(--paper-2);font-weight:800}
+.content tr:nth-child(even) td{background:rgba(232,227,214,.45)}
+.content blockquote{background:var(--lime);border-left:6px solid var(--line);padding:10px 18px;margin:16px 0;color:var(--ink)}
+.content code{background:var(--paper-2);border:1px solid var(--line);padding:1px 5px;font:700 12px 'Roboto Mono',monospace}
+.content pre{background:var(--line);color:var(--paper);border:1px solid var(--line);box-shadow:6px 6px 0 var(--coral);padding:16px 18px;overflow:auto;margin:16px 0}
+.content pre code{background:transparent;border:0;color:inherit;padding:0}
+.content img{max-width:100%;border:1px solid var(--line);box-shadow:5px 5px 0 var(--ink)}
+footer{text-align:center;padding:34px 0 0;color:var(--muted);font:700 11px 'Roboto Mono',monospace;letter-spacing:.06em}
+footer a{color:var(--ink);background:var(--sky);border:1px solid var(--line);padding:2px 8px;text-decoration:none}
+@media(max-width:680px){.container{padding:28px 14px 56px}.content{padding:24px 18px}header{display:block}header p{margin-top:10px}}
+</style>
+</head>
+<body>
 <div class="container"><header><h1>{title}</h1><p>行业白皮书 · trendgrab 生成 · {date}</p></header>
 <div class="content" id="content"></div>
 <footer>Powered by trendgrab · <a href="/">生成你自己的报告</a></footer></div>
@@ -1702,7 +1727,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.36.0", "date": "2026-08-08"}
+    return {"version": "2.37.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
