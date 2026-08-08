@@ -431,19 +431,51 @@ btn.disabled=true;
 status.classList.add('show');
 error.classList.remove('show');
 report.classList.remove('show');
-document.getElementById('eta').textContent='预计 2 分钟';
+document.getElementById('eta').textContent='正在检查深度报告…';
 
 const started=Date.now();
-const phases=['正在准备深度研究…','正在从深度报告抽取工厂线索…','正在整理工厂接单研判页…'];
+let phases=[];
 let phaseIndex=0;
-statusText.textContent=phases[0];
-const phaseTimer=setInterval(()=>{
-  if(phaseIndex<phases.length-1)statusText.textContent=phases[++phaseIndex];
-},5000);
-const elapsedTimer=setInterval(()=>{
-  const seconds=Math.floor((Date.now()-started)/1000);
-  timerEl.textContent=Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');
-},1000);
+let totalSeconds=780;
+let progressTimer=null;
+
+async function startProgress(hasDeep){
+  if(hasDeep){
+    totalSeconds=180;
+    phases=[{label:'深度报告已存在，开始生成网页版',sec:20},{label:'从深度报告提炼工厂接单线索',sec:100},{label:'配图与排版',sec:60}];
+    document.getElementById('eta').textContent='预计 3 分钟（深度报告已存在）';
+  }else{
+    totalSeconds=780;
+    phases=[{label:'生成深度报告（约10分钟）',sec:600},{label:'从深度报告提炼工厂接单线索',sec:120},{label:'配图与排版',sec:60}];
+    document.getElementById('eta').textContent='预计 13 分钟（需先生成深度报告）';
+  }
+  statusText.textContent='阶段 1/'+phases.length+'：'+phases[0].label;
+  progressTimer=setInterval(()=>{
+    const elapsed=Math.floor((Date.now()-started)/1000);
+    let acc=0,next=phaseIndex;
+    for(let i=0;i<phases.length;i++){
+      acc+=phases[i].sec;
+      if(elapsed<acc){next=i;break;}
+      next=i;
+    }
+    if(next!==phaseIndex){
+      phaseIndex=next;
+      statusText.textContent='阶段 '+(phaseIndex+1)+'/'+phases.length+'：'+phases[phaseIndex].label;
+    }
+    const left=Math.max(0,totalSeconds-elapsed);
+    timerEl.textContent='剩余 '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0');
+  },1000);
+}
+
+(async()=>{
+  try{
+    const r=await fetch('/api/check-cache?industry='+encodeURIComponent(industry));
+    const d=await r.json();
+    await startProgress(!!(d&&d.exists));
+  }catch(e){
+    await startProgress(false);
+  }
+})();
 
 try{
   const resp=await fetch('/api/generate-readable',{
@@ -465,8 +497,7 @@ try{
   error.textContent=e.message;
   error.classList.add('show');
 }finally{
-  clearInterval(phaseTimer);
-  clearInterval(elapsedTimer);
+  clearInterval(progressTimer);
   timerEl.textContent='';
   document.getElementById('eta').textContent='';
   status.classList.remove('show');
