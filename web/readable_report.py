@@ -365,19 +365,28 @@ def _prune_unsupported_sources(
         ])
         section["sources"] = keep_sources(section.get("sources", []), section_text)
         valid_ids = set(section["sources"])
+        kept_points = []
         for point in section.get("data_points", []):
             point["sources"] = keep_sources(
                 point.get("sources", []),
                 " ".join([point.get("label", ""), point.get("value", ""), point.get("note", "")]),
             )
+            if not point["sources"]:
+                continue
+            kept_points.append(point)
             valid_ids.update(point["sources"])
+        section["data_points"] = kept_points
         chart = section.get("chart")
         if chart:
             chart["sources"] = keep_sources(
                 chart.get("sources", []),
                 " ".join([chart.get("title", ""), " ".join(chart.get("labels", [])), " ".join(str(v) for v in chart.get("values", [])), chart.get("unit", ""), chart.get("note", "")]),
             )
-            valid_ids.update(chart["sources"])
+            if not chart["sources"]:
+                section["chart"] = None
+                chart = None
+            else:
+                valid_ids.update(chart["sources"])
         for card in section.get("cards", []):
             card["sources"] = keep_sources(
                 card.get("sources", []),
