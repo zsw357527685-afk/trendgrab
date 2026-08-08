@@ -266,6 +266,73 @@ def _select_deep_read_sources(evidence_sources: list[dict[str, Any]]) -> list[di
     return selected[:12]
 
 
+def _text_tokens(text: str) -> tuple[set[str], set[str], set[str]]:
+    lowered = text.lower()
+    numbers = set(re.findall(r"\d+(?:\.\d+)?", text))
+    units = set(re.findall(r"(?:人民币|美元|英镑|欧元|日元|元|万元|亿元|usd|rmb|eur|gbp)", lowered))
+    keywords = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-z]{3,}", lowered))
+    return numbers, units, keywords
+
+
+def _source_supports_claim(claim_text: str, source_text: str) -> bool:
+    claim_numbers, claim_units, claim_keywords = _text_tokens(claim_text)
+    source_numbers, source_units, source_keywords = _text_tokens(source_text)
+    if claim_numbers and claim_numbers & source_numbers:
+        return True
+    if claim_units and claim_units & source_units:
+        return True
+    return bool(claim_keywords & source_keywords)
+
+
+def _prune_unsupported_sources(
+    content: dict[str, Any],
+    sources: list[dict[str, Any]],
+    deep_text_by_id: dict[str, str],
+) -> dict[str, Any]:
+    """只保留来源文本里能找到对应数字或关键词的引用，避免模型硬挂来源。"""
+    evidence_by_id = {
+        source["id"]: " ".join([
+            str(source.get("title", "")),
+            str(source.get("snippet", "")),
+            deep_text_by_id.get(source["id"], ""),
+        ])
+        for source in sources
+    }
+
+    def keep_sources(candidate_ids: list[str], claim_text: str) -> list[str]:
+        kept = []
+        for source_id in candidate_ids:
+            source_text = evidence_by_id.get(source_id, "")
+            if _source_supports_claim(claim_text, source_text):
+                kept.append(source_id)
+        return kept
+
+    for section in content.get("sections", []):
+        section_text = " ".join([
+            section.get("title", ""),
+            section.get("summary", ""),
+            section.get("analysis", ""),
+        ])
+        section["sources"] = keep_sources(section.get("sources", []), section_text)
+        for point in section.get("data_points", []):
+            point["sources"] = keep_sources(
+                point.get("sources", []),
+                " ".join([point.get("label", ""), point.get("value", ""), point.get("note", "")]),
+            )
+        chart = section.get("chart")
+        if chart:
+            chart["sources"] = keep_sources(
+                chart.get("sources", []),
+                " ".join([chart.get("title", ""), " ".join(chart.get("labels", [])), " ".join(str(v) for v in chart.get("values", [])), chart.get("unit", ""), chart.get("note", "")]),
+            )
+        for card in section.get("cards", []):
+            card["sources"] = keep_sources(
+                card.get("sources", []),
+                " ".join([card.get("title", ""), card.get("text", "")]),
+            )
+    return content
+
+
 def generate_content(
     client: Any,
     model: str,
@@ -320,9 +387,11 @@ def generate_content(
         source["deep_read"] = source["id"] in deep_source_ids
 
     page_text = []
+    deep_text_by_id: dict[str, str] = {}
     for source in deep_sources:
         text = fetch_content(source["url"])
         if text:
+            deep_text_by_id[source["id"]] = text[:1000]
             page_text.append(f"[{source['id']}] {source['url']}\n{text[:1000]}")
     trade_text = fetch_trade_data(industry)
     source_text = "\n\n".join(
@@ -381,6 +450,7 @@ sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决
         _json_from_response(response.choices[0].message.content), industry, sources,
         {source["id"] for source in evidence_sources},
     )
+    content = _prune_unsupported_sources(content, sources, deep_text_by_id)
     content["evidence_count"] = len(evidence_sources)
     content["deep_read_count"] = len(deep_sources)
     return content
