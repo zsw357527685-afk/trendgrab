@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.22.0")
+app = FastAPI(title="trend_grab", version="2.23.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -610,7 +610,8 @@ async def generate_readable(req: GenerateRequest):
         deep_text = deep_path.read_text(encoding="utf-8")
         content = generate_from_deep_report(client, LLM_MODEL, industry, deep_text)
         content = _attach_readable_section_images(content, search_images, _save_readable_images)
-        content["deep_report_url"] = f"/deep-report/{quote(deep_path.stem)}"
+        deep_safe = re.sub(r"^report_", "", deep_path.stem)
+        content["deep_report_url"] = f"/deep-report/{quote(deep_safe)}"
         readable_html = render_readable_html(content)
     except ValueError as e:
         raise HTTPException(502, f"工厂接单研判页内容格式异常，请重试：{e}")
@@ -1549,7 +1550,8 @@ h1{{font-size:24px;font-weight:700}}header p{{color:var(--muted);margin-top:8px;
 
 @app.get("/deep-report/{name}", response_class=HTMLResponse)
 async def view_deep_report(name: str):
-    safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80][:50]
+    clean_name = re.sub(r"^report_", "", name)
+    safe = re.sub(r'[\\/:*?"<>|]', '_', clean_name)[:80][:50]
     path = PROJECT_ROOT / "output" / f"report_{safe}.md"
     if not path.exists():
         legacy = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
@@ -1676,7 +1678,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.22.0", "date": "2026-08-08"}
+    return {"version": "2.23.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
