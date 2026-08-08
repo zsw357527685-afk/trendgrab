@@ -17,9 +17,13 @@ SECTION_BLUEPRINT = (
     ("history", "02 / 发展路径", "品类起源、阶段与关键节点"),
     ("hot_topics", "03 / 近期热点", "订单、爆款与正在发生的事"),
     ("competition", "04 / 竞争格局", "玩家、代工、渠道与利润分布"),
-    ("trends", "05 / 趋势预测", "接下来会怎么变、什么款有空间"),
-    ("risks", "06 / 风险与不确定", "接单与走量的风险、缺口"),
-    ("next", "07 / 下一步验证", "接单前最该补的资料"),
+    ("cost_profit", "05 / 成本与利润", "价格带、成本结构、利润在哪"),
+    ("supply_chain", "06 / 产业带与供应链", "产地、供应链、代工能力"),
+    ("channels", "07 / 渠道与订单", "谁在给单、走什么渠道"),
+    ("barriers", "08 / 认证与门槛", "认证、资质、工艺门槛"),
+    ("trends", "09 / 趋势预测", "接下来会怎么变、什么款有空间"),
+    ("risks", "10 / 风险与不确定", "接单与走量的风险、缺口"),
+    ("next", "11 / 下一步验证", "接单前最该补的资料"),
 )
 
 BLOCKED_SOURCE_MARKERS = (
@@ -522,7 +526,7 @@ JSON 必须符合：
   "decision": "一句给工厂老板的结论：能确认什么、主要限制是什么",
   "sections": [
     {{
-      "id":"overview|history|hot_topics|competition|trends|risks|next",
+      "id":"overview|history|hot_topics|competition|cost_profit|supply_chain|channels|barriers|trends|risks|next",
       "title":"...",
       "summary":"不超过35字的判断句，只给结论，不罗列数据",
       "analysis":"180到260字的完整分析段落",
@@ -549,7 +553,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读研究资料，再写事实和分析，最后从资料里挑来源编号。禁止先写内容再反向找来源，禁止凭印象补来源。资料里没有的事实不要写，资料里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
+sections 从上述 11 个 id 中选择 5-9 个，顺序由本次资料决定，优先保留资料里有具体数据和结论的章节，不要为了框架硬凑，也不要因为框架限制丢掉有价值内容：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），cost_profit=成本与利润（价格带、成本结构、利润在哪），supply_chain=产业带与供应链（产地、供应链、代工能力），channels=渠道与订单（谁在给单、走什么渠道），barriers=认证与门槛（认证、资质、工艺门槛），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
 
 研究资料（已按订单、产品、渠道、门槛、风险均衡挑选；标有“深读”的资料正文更完整）：
 {evidence}"""
@@ -640,7 +644,7 @@ JSON 必须符合：
   "decision": "一句给工厂老板的结论：能确认什么、主要限制是什么",
   "sections": [
     {{
-      "id":"overview|history|hot_topics|competition|trends|risks|next",
+      "id":"overview|history|hot_topics|competition|cost_profit|supply_chain|channels|barriers|trends|risks|next",
       "title":"...",
       "summary":"不超过35字的判断句，只给结论，不罗列数据",
       "analysis":"180到260字的完整分析段落",
@@ -667,7 +671,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读深度报告，再写事实和分析，最后从报告里挑 [S#] 编号。禁止先写内容再反向找来源，禁止凭印象补来源。报告里没有的事实不要写，报告里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
+sections 从上述 11 个 id 中选择 5-9 个，顺序由深度报告内容决定，优先保留报告里有具体数据和结论的章节，不要为了框架硬凑，也不要因为框架限制丢掉有价值内容：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），cost_profit=成本与利润（价格带、成本结构、利润在哪），supply_chain=产业带与供应链（产地、供应链、代工能力），channels=渠道与订单（谁在给单、走什么渠道），barriers=认证与门槛（认证、资质、工艺门槛），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
 
 深度报告（已替换为 [S#] 编号）：
 {evidence}"""
@@ -854,17 +858,17 @@ def _render_section(section: dict[str, Any], source_map: dict[str, dict[str, Any
             f'<article class="product-note note-{index}"><span>0{index + 1}</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id == "competition":
+    elif section_id in {"competition", "cost_profit"}:
         body = structured + '<div class="price-flow">' + "".join(
             f'<article class="price-stop"><span>STEP {index + 1}</span><b>{html.escape(card["title"])}</b><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>{"<i class=\"flow-arrow\">→</i>" if index < len(cards) - 1 else ""}'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id in {"history", "trends"}:
+    elif section_id in {"history", "trends", "supply_chain", "channels"}:
         body = structured + '<div class="channel-route">' + "".join(
             f'<article class="route-stop"><b>{index + 1:02d}</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</div></article>'
             for index, card in enumerate(cards)
         ) + '</div>'
-    else:  # risks / next
+    else:  # barriers / risks / next
         body = structured + '<div class="risk-wall">' + "".join(
             f'<article class="risk-item"><b>!</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</div></article>'
             for card in cards

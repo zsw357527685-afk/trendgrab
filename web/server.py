@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.24.0")
+app = FastAPI(title="trend_grab", version="2.25.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -302,10 +302,33 @@ READABLE_SECTION_IMAGE_QUERIES = {
     "history": "行业 发展 历史 里程碑",
     "hot_topics": "爆款 热销 订单 案例",
     "competition": "品牌 工厂 代工 供应链",
+    "cost_profit": "成本 价格 利润 报价",
+    "supply_chain": "产业带 供应链 工厂 产地",
+    "channels": "渠道 平台 采购 批发",
+    "barriers": "认证 检测 合规 质量",
     "trends": "新品 趋势 工艺 材料",
     "risks": "风险 质量问题 投诉",
     "next": "展会 工厂 订单 客户",
 }
+
+
+def _image_relevant(image: dict, industry: str, query: str) -> bool:
+    """过滤明显无关的图片：标题、出处页或图片 URL 至少要和行业或查询词相关。"""
+    text = " ".join([
+        str(image.get("title", "")),
+        str(image.get("source", "")),
+        str(image.get("url", "")),
+    ]).lower()
+    industry_compact = re.sub(r"\s+", "", industry.lower())
+    if len(industry_compact) >= 2 and industry_compact in text:
+        return True
+    for token in re.findall(r"[a-z0-9]{3,}", query.lower()):
+        if token in text:
+            return True
+    for segment in re.findall(r"[\u4e00-\u9fff]+", query):
+        if len(segment) >= 2 and segment in text:
+            return True
+    return False
 
 
 def _attach_readable_section_images(content: dict, search_images, save_images) -> dict:
@@ -319,9 +342,10 @@ def _attach_readable_section_images(content: dict, search_images, save_images) -
             candidates = []
             seen_urls = set()
             for query in queries[:2]:
-                for image in search_images(f"{content['industry']} {query}", 3):
+                search_query = f"{content['industry']} {section.get('title', '')} {query}"
+                for image in search_images(search_query, 4):
                     url = image.get("url", "")
-                    if url and url not in seen_urls:
+                    if url and url not in seen_urls and _image_relevant(image, content["industry"], search_query):
                         seen_urls.add(url)
                         candidates.append(image)
             return section, save_images(f"{safe}_{section.get('id', 'section')}", candidates, 1)
@@ -1677,7 +1701,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.24.0", "date": "2026-08-08"}
+    return {"version": "2.25.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
