@@ -382,6 +382,11 @@ def _prune_unsupported_sources(
         for card in section.get("cards", []):
             card_text = " ".join([card.get("title", ""), card.get("text", "")])
             add_inline_ids(card.get("text", ""), card_text)
+        for card in section.get("cards", []):
+            card_inline_ids = {f"S{match}" for match in re.findall(r"\[S(\d+)\]", str(card.get("text", "")))}
+            for source_id in card_inline_ids:
+                if source_id in valid_ids and source_id not in card["sources"]:
+                    card["sources"].append(source_id)
 
         ordered_ids = []
         for source_id in section.get("sources", []) + [
