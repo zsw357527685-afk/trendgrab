@@ -29,15 +29,17 @@ from pydantic import BaseModel
 
 try:
     from readable_report import generate_content as generate_readable_content
+    from readable_report import generate_from_deep_report
     from readable_report import render_html as render_readable_html
 except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
     from web.readable_report import generate_content as generate_readable_content
+    from web.readable_report import generate_from_deep_report
     from web.readable_report import render_html as render_readable_html
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.13.1")
+app = FastAPI(title="trend_grab", version="2.14.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -199,21 +201,54 @@ SKIP_DOMAINS = {
 
 # ── 搜索引擎 ─────────────────────────────────────────────
 def search_web(query: str, max_results: int = 5) -> list[dict]:
-    """多引擎搜索，DuckDuckGo 优先，限流时切 Bing"""
-    results = []
+    """多引擎搜索：DuckDuckGo + Bing，合并去重后再返回。"""
+    results: list[dict] = []
+    seen_urls: set[str] = set()
 
-    # 引擎1: DDGS（新版库），单次不超5秒
+    def add_entries(entries: list[dict]) -> None:
+        for item in entries:
+            url = str(item.get("url", "")).strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            results.append(item)
+
+    # 引擎1: DDGS（新版库），单次不超8秒
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                results.append({"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")})
-        if len(results) >= 2:
-            return results
+            add_entries([
+                {"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")}
+                for r in ddgs.text(query, max_results=max_results)
+            ])
     except Exception:
         pass
 
-    return results if results else [{"title": "搜索受限", "url": "", "snippet": "请稍后重试"}]
+    # 引擎2: Bing，中文查询的补充来源
+    try:
+        response = httpx.get(
+            "https://www.bing.com/search",
+            params={"q": query, "setlang": "zh-hans", "cc": "cn", "count": max_results * 2},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=8,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        for item in soup.select("li.b_algo")[: max_results * 2]:
+            link = item.select_one("h2 a")
+            if not link:
+                continue
+            caption = item.select_one(".b_caption p")
+            add_entries([{
+                "title": link.get_text(" ", strip=True),
+                "url": link.get("href", ""),
+                "snippet": caption.get_text(" ", strip=True) if caption else "",
+            }])
+    except Exception:
+        pass
+
+    return results[:max_results] if results else [{"title": "搜索受限", "url": "", "snippet": "请稍后重试"}]
 
 
 def search_images(query: str, max_results: int = 2) -> list[dict]:
@@ -563,7 +598,9 @@ async def generate_readable(req: GenerateRequest):
         raise HTTPException(403, "授权码无效或次数已用完")
 
     try:
-        content = generate_readable_content(client, LLM_MODEL, industry, search_web, fetch_content, _fetch_trade_data)
+        deep_path = _ensure_deep_report(industry)
+        deep_text = deep_path.read_text(encoding="utf-8")
+        content = generate_from_deep_report(client, LLM_MODEL, industry, deep_text)
         content = _attach_readable_section_images(content, search_images, _save_readable_images)
         readable_html = render_readable_html(content)
     except ValueError as e:
@@ -849,6 +886,20 @@ def _gen_deep(industry: str) -> str:
         temperature=0.7, max_tokens=10000,
     )
     return resp.choices[0].message.content
+
+
+def _ensure_deep_report(industry: str) -> Path:
+    """工厂接单版强制先有深度报告：已存在就直接用，否则自动生成一份。"""
+    safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80][:50]
+    path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
+    if path.exists():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    report = _gen_deep(industry)
+    if not report.lstrip().startswith("#"):
+        report = f"# {industry} 深度分析报告\n\n{report}"
+    path.write_text(report, encoding="utf-8")
+    return path
 
 
 def _deep_merge(main_report: str, sub_reports: list[dict], industry: str) -> str:
@@ -1402,7 +1453,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.13.1", "date": "2026-08-08"}
+    return {"version": "2.14.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──

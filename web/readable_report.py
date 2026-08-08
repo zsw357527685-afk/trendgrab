@@ -9,6 +9,7 @@ import re
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote, urlparse
 
 
 SECTION_BLUEPRINT = (
@@ -33,7 +34,10 @@ READABLE_QUERIES = {
     "制造门槛": ("工厂 产能 设备 模具 生产线", "认证 CE ASTM 检测 合规", "专利 侵权 质量 退货"),
     "风险与缺口": ("风险 问题 投诉 召回", "价格战 同质化 库存 滞销", "政策 限制 失败案例"),
 }
-READABLE_QUALITY_SITES = ("36kr.com", "huxiu.com", "jiemian.com", "cifnews.com", "amz123.com", "1688.com")
+READABLE_QUALITY_SITES = (
+    "36kr.com", "huxiu.com", "jiemian.com", "cifnews.com", "amz123.com", "1688.com",
+    "yiwugo.com", "aliexpress.com", "made-in-china.com", "globalsources.com",
+)
 
 
 def _industry_keywords(industry: str) -> list[str]:
@@ -374,11 +378,43 @@ def generate_content(
             for result in search_web(f"{industry} {query}", max_results=4):
                 add_result(topic, result)
 
-    for site in READABLE_QUALITY_SITES[:4]:
+    for site in READABLE_QUALITY_SITES[:6]:
         if time.monotonic() > search_deadline or len(sources) >= 42:
             break
         for result in search_web(f"site:{site} {industry}", max_results=3):
             add_result("补充资料", result)
+
+    # 保底平台货源页：即使搜索引擎质量差，也至少让模型拿到可核实的批发/货源入口。
+    platform_pages = [
+        ("订单需求", "1688", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(industry)}"),
+        ("订单需求", "1688 穿戴甲", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote('穿戴甲')}"),
+        ("订单需求", "1688 厂家", f"https://s.1688.com/company/company_search.htm?keywords={quote(industry)}"),
+        ("产品与价格", "1688 美甲片", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote('美甲片')}"),
+        ("产品与价格", "1688 儿童穿戴甲", f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote('儿童穿戴甲')}"),
+        ("产品与价格", "淘宝", f"https://s.taobao.com/search?q={quote(industry)}"),
+        ("产品与价格", "淘宝 穿戴甲", f"https://s.taobao.com/search?q={quote('穿戴甲')}"),
+        ("买家与渠道", "义乌购", f"https://www.yiwugo.com/search/all.html?kw={quote(industry)}"),
+        ("买家与渠道", "义乌购 穿戴甲", f"https://www.yiwugo.com/search/all.html?kw={quote('穿戴甲')}"),
+        ("买家与渠道", "速卖通", f"https://www.aliexpress.com/wholesale?SearchText={quote('press on nails')}"),
+        ("买家与渠道", "阿里国际", f"https://www.alibaba.com/trade/search?SearchText={quote('press on nails')}"),
+        ("制造门槛", "中国制造网", f"https://www.made-in-china.com/multi-search/search1/{quote('press on nails')}/"),
+        ("制造门槛", "环球资源", f"https://www.globalsources.com/search/{quote('press on nails')}/"),
+        ("买家与渠道", "亚马逊", f"https://www.amazon.com/s?k={quote('press on nails')}"),
+    ]
+
+    def add_platform_source(topic: str, name: str, url: str) -> None:
+        if len(sources) >= 42 or url in seen_urls:
+            return
+        seen_urls.add(url)
+        sources.append({
+            "id": f"S{len(sources) + 1}", "topic": topic,
+            "title": f"{name} {industry} 货源/搜索页",
+            "snippet": "平台公开货源或搜索聚合页，需要抓取页面核实价格、规格和供应商。",
+            "url": url,
+        })
+
+    for topic, name, url in platform_pages:
+        add_platform_source(topic, name, url)
 
     evidence_sources = _select_evidence_sources(sources)
     deep_sources = _select_deep_read_sources(evidence_sources)
@@ -455,6 +491,123 @@ sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决
     content = _prune_unsupported_sources(content, sources, deep_text_by_id)
     content["evidence_count"] = len(evidence_sources)
     content["deep_read_count"] = len(deep_sources)
+    return content
+
+
+def _parse_deep_sources(deep_text: str) -> tuple[list[dict[str, Any]], dict[str, str], str]:
+    """把深度报告里的行内 URL 引用转成 S1..Sn，并把报告替换为带编号的证据文本。"""
+    citation_re = re.compile(r"\[([^\]]*)\]\((https?://[^)\s]+)\)")
+    sources: list[dict[str, Any]] = []
+    contexts_by_url: dict[str, list[str]] = {}
+    url_to_sid: dict[str, str] = {}
+    evidence_parts: list[str] = []
+    pos = 0
+
+    for match in citation_re.finditer(deep_text):
+        label = match.group(1).strip()
+        url = match.group(2)
+        start = max(0, match.start() - 350)
+        end = min(len(deep_text), match.end() + 350)
+        context = re.sub(r"\s+", " ", deep_text[start:end]).strip()[:600]
+
+        if url not in url_to_sid:
+            sid = f"S{len(sources) + 1}"
+            url_to_sid[url] = sid
+            host = urlparse(url).netloc or url
+            title = label if label and label != "↗" else host
+            sources.append({
+                "id": sid, "url": url, "title": title,
+                "snippet": context, "topic": "深度报告", "deep_read": True,
+            })
+            contexts_by_url[url] = [context]
+        else:
+            sid = url_to_sid[url]
+            contexts_by_url[url].append(context)
+
+        evidence_parts.append(deep_text[pos:match.start()] + f"[{sid}]")
+        pos = match.end()
+
+    evidence_parts.append(deep_text[pos:])
+    deep_text_by_id = {
+        source["id"]: "\n".join(contexts_by_url.get(source["url"], [source["snippet"]]))
+        for source in sources
+    }
+    return sources, deep_text_by_id, "".join(evidence_parts)
+
+
+def generate_from_deep_report(
+    client: Any,
+    model: str,
+    industry: str,
+    deep_text: str,
+) -> dict[str, Any]:
+    """阶段一（深度报告版）：从已有深度报告里抽取老板版内容，不重新做浅层搜索。"""
+    sources, deep_text_by_id, evidence_text = _parse_deep_sources(deep_text)
+    if not sources:
+        sources = [{
+            "id": "S1", "url": "", "title": "深度研究报告",
+            "snippet": deep_text[:400], "topic": "深度报告", "deep_read": True,
+        }]
+        deep_text_by_id = {"S1": deep_text}
+        evidence_text = deep_text
+
+    evidence = evidence_text[:45000]
+    prompt = f"""你是服务于义乌及产业带工厂老板的产业情报分析师，读者主要做代工（OEM/ODM）或走量批发。以下是一份已经完成的「{industry}」深度研究报告，引用已经替换成 [S#] 编号。请只从这份深度报告里选取对工厂接单、代工、走量批发真正有用的内容，做成《工厂接单研判页》。
+
+只保留：订单信号、什么款好做、价格和利润、谁在给单、接单门槛、风险与缺口、下一步验证。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。不要点名奢侈品牌或大牌做案例；如果资料只有品牌案例，就说成“经典大牌款”或“高端品牌款”。
+
+这不是经营指令书：你不了解该工厂的真实成本、产能、客户和报价，不能替老板下“应该投产/应该赚钱”的结论。只能使用深度报告中明确出现的事实和 [S#] 编号；不确定就写“资料不足，建议验证”，绝不能编造数字、国家、产品、价格、销量、利润或来源。不要输出 Markdown，不要输出解释，只输出一个合法 JSON 对象。
+
+JSON 必须符合：
+{{
+  "headline": "一句基于深度报告的工厂接单判断",
+  "subheadline": "一句说明本页覆盖范围",
+  "decision": "一句给工厂老板的结论：能确认什么、主要限制是什么",
+  "sections": [
+    {{
+      "id":"demand|product|pricing|orders|barriers|risks|next",
+      "title":"...",
+      "summary":"不超过35字的判断句，只给结论，不罗列数据",
+      "analysis":"180到260字的完整分析段落",
+      "data_points":[
+        {{"label":"数据名称（不超过16字）","value":"具体数值","note":"口径或补充说明（不超过20字）","sources":["S1"]}}
+      ],
+      "chart":{{
+        "type":"bar|donut",
+        "title":"图表标题（不超过18字）",
+        "labels":["..."],
+        "values":[1,2,3],
+        "unit":"单位",
+        "note":"数据口径或限制（不超过32字）",
+        "sources":["S1"]
+      }},
+      "sources":["S1","S2"],
+      "cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]
+    }}
+  ]
+}}
+
+反重复铁律：同一事实和同一组数字只允许出现一次。data_points 是结构化数据点，图表只画 data_points 里的数据；summary 只写判断句，不复述完整数字；analysis 最多解释一次关键数据，不要逐条重列；cards 只放新增案例、细节或解读，不重写 data_points 已列出的内容。跨板块也遵守：同一数据只在其最相关的板块作为主信息，其他板块用“如前所述”带过，不要再次写全数字。
+
+工作顺序必须是：先阅读深度报告，再写事实和分析，最后从报告里挑 [S#] 编号。禁止先写内容再反向找来源，禁止凭印象补来源。报告里没有的事实不要写，报告里有的数字、价格、案例才允许进入正文并挂上对应编号。
+
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲报告支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
+
+深度报告（已替换为 [S#] 编号）：
+{evidence}"""
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.35,
+        max_tokens=5000,
+    )
+    content = normalise_content(
+        _json_from_response(response.choices[0].message.content), industry, sources,
+        {source["id"] for source in sources},
+    )
+    content = _prune_unsupported_sources(content, sources, deep_text_by_id)
+    content["evidence_count"] = len(sources)
+    content["deep_read_count"] = len(sources)
     return content
 
 
