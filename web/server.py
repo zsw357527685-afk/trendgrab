@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.39.0")
+app = FastAPI(title="trend_grab", version="2.40.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -483,7 +483,16 @@ def _init_auth():
     changed = False
     for info in data.values():
         if isinstance(info, dict) and "web_left" not in info:
-            info["web_left"] = info.get("quick_left", info.get("deep_left", 10 if info is not data.get("admin") else -1))
+            quick = info.get("quick_left")
+            deep = info.get("deep_left")
+            if quick is not None and deep is not None:
+                info["web_left"] = max(quick, deep)
+            elif quick is not None:
+                info["web_left"] = quick
+            elif deep is not None:
+                info["web_left"] = deep
+            else:
+                info["web_left"] = 10 if info is not data.get("admin") else -1
             info.pop("quick_left", None)
             info.pop("deep_left", None)
             changed = True
@@ -1728,7 +1737,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.39.0", "date": "2026-08-08"}
+    return {"version": "2.40.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
