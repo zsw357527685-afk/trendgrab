@@ -125,13 +125,26 @@ def _normalise_chart(value: Any, valid_source_ids: set[str]) -> dict[str, Any] |
         numbers.append(number)
     if chart_type == "donut" and abs(sum(numbers) - 100) > 1:
         return None
+    unit = _text(value.get("unit"), "")
+    if not unit:
+        return None
+    labels_text = " ".join(str(label) for label in labels)
+    conflicting_pairs = (
+        ("销量", "销售额"),
+        ("数量", "金额"),
+        ("件", "美元"),
+        ("件", "万元"),
+        ("元", "美元"),
+    )
+    if any(a in labels_text and b in labels_text for a, b in conflicting_pairs):
+        return None
     sources = [str(source) for source in value.get("sources", []) if str(source) in valid_source_ids][:2]
     return {
         "type": chart_type,
         "title": _text(value.get("title"), "关键数据")[:40],
         "labels": [str(label)[:40] for label in labels],
         "values": numbers,
-        "unit": _text(value.get("unit"), "")[:20],
+        "unit": unit[:20],
         "note": _text(value.get("note"), "")[:80],
         "sources": sources,
     }
@@ -518,7 +531,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读研究资料，再写事实和分析，最后从资料里挑来源编号。禁止先写内容再反向找来源，禁止凭印象补来源。资料里没有的事实不要写，资料里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲资料支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 180-260 字。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
 
 研究资料（已按订单、产品、渠道、门槛、风险均衡挑选；标有“深读”的资料正文更完整）：
 {evidence}"""
@@ -635,7 +648,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读深度报告，再写事实和分析，最后从报告里挑 [S#] 编号。禁止先写内容再反向找来源，禁止凭印象补来源。报告里没有的事实不要写，报告里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲报告支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 180-260 字。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
 
 深度报告（已替换为 [S#] 编号）：
 {evidence}"""
@@ -692,6 +705,20 @@ def _render_inline_sources(text: str, source_map: dict[str, dict[str, Any]]) -> 
             )
         return match.group(0)
     return re.sub(r"\[S\d+\]", replace, text)
+
+
+def _render_analysis(text: str) -> str:
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+    if not blocks:
+        return ""
+    parts: list[str] = []
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if any(line.startswith(("-", "•", "1.", "2.", "3.")) for line in lines):
+            parts.append("<ul>" + "".join(f"<li>{line.lstrip('-•0123456789. ')}</li>" for line in lines) + "</ul>")
+        else:
+            parts.append("<p>" + " ".join(lines) + "</p>")
+    return "".join(parts)
 
 
 def _render_data_points(data_points: list[dict[str, Any]], source_map: dict[str, dict[str, Any]]) -> str:
@@ -771,18 +798,25 @@ def _render_section_image(section: dict[str, Any]) -> str:
     image = images[0]
     if not image.get("url"):
         return ""
-    return (
+    media = (
         f'<figure class="section-media"><img src="{html.escape(image["url"], quote=True)}" '
         f'alt="{html.escape(image.get("title", section["title"]), quote=True)}" loading="lazy">'
         f'<figcaption>{html.escape(image.get("title", "行业参考图"))}</figcaption></figure>'
     )
+    source_url = image.get("source")
+    if source_url:
+        return (
+            f'<a class="section-media-link" href="{html.escape(source_url, quote=True)}" '
+            f'target="_blank" rel="noopener noreferrer">{media}</a>'
+        )
+    return media
 
 
 def _section_frame(section: dict[str, Any], body: str, source_map: dict[str, dict[str, Any]]) -> str:
     return f'''<section id="{section["id"]}" class="section section-{section["id"]}">
   <div class="section-head"><span>{html.escape(section["eyebrow"])}</span><h2>{html.escape(section["title"])}</h2></div>
   <p class="section-summary">{_render_inline_sources(html.escape(section["summary"]), source_map)}</p>
-  <p class="section-analysis">{_render_inline_sources(html.escape(section["analysis"]), source_map)}</p>{_render_citations(section, source_map)}{body}
+  <div class="section-analysis">{_render_analysis(_render_inline_sources(html.escape(section["analysis"]), source_map))}</div>{_render_citations(section, source_map)}{body}
 </section>'''
 
 
@@ -834,8 +868,21 @@ def _heat_label(strength: int) -> str:
 def render_html(content: dict[str, Any]) -> str:
     """阶段二：只由 Python 负责把 JSON 填进固定版式。"""
     has_section_images = any(section.get("images") for section in content["sections"])
+    def render_scene(image: dict[str, Any], index: int) -> str:
+        figure = (
+            f'<figure class="scene scene-{index}"><img src="{html.escape(image["url"], quote=True)}" '
+            f'alt="{html.escape(image.get("title", content["industry"]))}" loading="lazy">'
+            f'<figcaption>{html.escape(image.get("title", "行业参考图"))}</figcaption></figure>'
+        )
+        source_url = image.get("source")
+        if source_url:
+            return (
+                f'<a class="scene-link" href="{html.escape(source_url, quote=True)}" '
+                f'target="_blank" rel="noopener noreferrer">{figure}</a>'
+            )
+        return figure
     image_html = "".join(
-        f'<figure class="scene scene-{index}"><img src="{html.escape(image["url"], quote=True)}" alt="{html.escape(image.get("title", content["industry"]))}" loading="lazy"><figcaption>{html.escape(image.get("title", "行业参考图"))}</figcaption></figure>'
+        render_scene(image, index)
         for index, image in enumerate(content.get("images", [])[:4], start=1)
         if isinstance(image, dict) and image.get("url")
     )
@@ -884,6 +931,8 @@ def render_html(content: dict[str, Any]) -> str:
 .section-media{{max-width:560px;margin:24px 0 0;border:1px solid var(--ink);background:var(--white);box-shadow:6px 6px 0 var(--coral)}}.section-media img{{display:block;width:100%;max-height:320px;object-fit:cover}}.section-media figcaption{{padding:8px 12px;background:var(--white);border-top:1px solid var(--ink);font:700 11px 'Roboto Mono',monospace;color:var(--ink)}}.section:nth-of-type(even) .section-media{{margin-left:auto}}.source-title{{display:block;margin-top:3px;color:var(--ink)!important}}.source-url{{display:block;margin-top:2px;color:var(--muted);font-size:11px;word-break:break-all}}.sources li{{margin:0 0 12px}}.citations a{{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}}
 </style><style>
 .inline-source{{display:inline-block;margin:0 2px;padding:1px 4px;background:var(--lime);border:1px solid var(--ink);color:var(--ink);font:700 10px 'Roboto Mono',monospace;text-decoration:none;white-space:nowrap}}.inline-source:hover{{background:var(--coral)}}
+</style><style>
+.section-media-link{{display:block;text-decoration:none;color:inherit}}.section-media-link:hover .section-media{{box-shadow:8px 8px 0 var(--ink)}}.scene-link{{display:block;text-decoration:none;color:inherit}}.section-analysis p{{margin:0 0 12px}}.section-analysis ul{{margin:12px 0 0;padding-left:18px}}.section-analysis li{{margin:0 0 6px}}
 </style></head><body>
 <nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><a href="#sources">查看资料来源 ↓</a></div></nav>
 <header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
