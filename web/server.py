@@ -39,7 +39,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.15.0")
+app = FastAPI(title="trend_grab", version="2.16.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -1005,14 +1005,190 @@ def _run_deep_research(industry: str, safe: str, merged_path: Path, on_progress=
     return report
 
 
+RESEARCH_REPORT_TEMPLATE = """# {industry} 行业深度分析 | {date}
+
+> 研究覆盖：行业概述 | 发展路径 | 近期热点 | 竞争格局 | 趋势预测
+
+---
+
+## 一、行业概述
+
+### 1.1 行业定义与边界
+[行业是什么，包含哪些子类/细分，上下游关系]
+
+### 1.2 市场规模
+- **全球市场**：[数据 + 来源]
+- **中国市场**：[数据 + 来源]
+- **增长率**：[CAGR 数据]
+
+### 1.3 产业链结构
+[每段的具体说明]
+
+---
+
+## 二、发展路径与关键节点
+
+### 2.1 时间线
+[时间 | 阶段 | 关键事件]
+
+### 2.2 关键驱动力
+- **技术驱动**：[具体技术突破]
+- **消费驱动**：[消费者行为变化]
+- **政策/资本驱动**：[政策利好或资本推动]
+
+---
+
+## 三、近期热点（近 3-6 个月）
+
+### 3.1 热点一：[标题]
+[事件描述 + 影响分析 + 来源链接]
+
+### 3.2 热点二：[标题]
+[同上]
+
+### 3.3 热点三：[标题]
+[同上]
+
+---
+
+## 四、竞争格局
+
+### 4.1 头部玩家
+[梯队 | 代表品牌/公司 | 核心优势 | 市场份额（估算）]
+
+### 4.2 商业模式对比
+[直销 vs 平台 vs 订阅 vs ...]
+
+### 4.3 供应链分析
+[核心供应链在哪里？成本结构？进入壁垒？]
+
+---
+
+## 五、趋势预测
+
+### 5.1 短期趋势（6-12 个月）
+1. [趋势 + 依据]
+2. [趋势 + 依据]
+
+### 5.2 中期趋势（1-3 年）
+1. [趋势 + 依据]
+2. [趋势 + 依据]
+
+### 5.3 风险与不确定性
+- [风险点]
+
+---
+
+## 数据来源
+[所有引用的 URL，按出现顺序编号]
+"""
+
+
+def _research_queries(industry: str) -> dict:
+    """scripts/research.py 同款 5 维度搜索关键词。"""
+    return {
+        "overview": [
+            f"{industry} 行业报告 市场规模 2025 2026",
+            f"{industry} 行业概述 产业链 定义",
+            f"{industry} market size industry report 2025 2026",
+            f"{industry} 市场规模 增长趋势",
+        ],
+        "history": [
+            f"{industry} 发展历程 起源 历史",
+            f"{industry} 关键节点 里程碑",
+            f"{industry} history development timeline",
+            f"{industry} 风口 兴起 爆发",
+        ],
+        "hot_topics": [
+            f"{industry} 2026 最新 趋势 热点",
+            f"{industry} 最新 新闻 动态",
+            f"{industry} latest trends 2026",
+            f"{industry} 融资 投融资 资本",
+            f"{industry} 出海 跨境电商 TikTok",
+        ],
+        "competition": [
+            f"{industry} 头部品牌 头部玩家 排行",
+            f"{industry} 竞争格局 市场份额",
+            f"{industry} top brands companies ranking",
+            f"{industry} 供应链 工厂 代工",
+            f"{industry} 商业模式 盈利模式",
+        ],
+        "trends": [
+            f"{industry} 未来趋势 预测 2025 2026",
+            f"{industry} 消费趋势 消费者偏好",
+            f"{industry} future trends forecast prediction",
+            f"{industry} AI 数字化 技术升级",
+            f"{industry} 政策 监管 合规",
+        ],
+    }
+
+
+def _is_template_report(text: str) -> bool:
+    markers = ("[数据 + 来源]", "[行业是什么", "[趋势 + 依据]", "[同上]", "[所有引用的 URL")
+    return any(marker in text for marker in markers)
+
+
+def _run_research_style_deep_report(industry: str, safe: str, path: Path, on_progress=None) -> str:
+    """scripts/research.py 架构的自动深度研究：5 维度搜索 → 模板化撰写 → report_*.md。"""
+    def progress(phase: str, value: int) -> None:
+        if on_progress:
+            on_progress(phase, value)
+
+    progress("search", 0)
+    queries = _research_queries(industry)
+    all_snippets = []
+    seen_urls = set()
+    for dim_key, dim_queries in queries.items():
+        for q in dim_queries[:3]:
+            results = search_web(f"{industry} {q}", max_results=4)
+            for r in results:
+                url = r.get("url", "")
+                if url and url not in seen_urls:
+                    domain = re.search(r"https?://([^/]+)", url)
+                    if domain and any(d in domain.group(1) for d in SKIP_DOMAINS):
+                        continue
+                    seen_urls.add(url)
+                    all_snippets.append(f"[{dim_key}] {r.get('title', '')}\n{r.get('snippet', '')}\n{url}")
+
+    research_text = "\n\n".join(all_snippets[:120])
+    deep_text = ""
+    for url in list(seen_urls)[:6]:
+        c = fetch_content(url)
+        if c:
+            deep_text += f"\n{url}\n{c[:3000]}\n---\n"
+
+    progress("write", 60)
+    now = datetime.now().strftime("%Y-%m-%d")
+    template = RESEARCH_REPORT_TEMPLATE.replace("{industry}", industry).replace("{date}", now)
+    resp = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": f"你是行业研究员。按以下架构撰写深度分析报告，不编造数据和结论，所有数据必须来自研究材料并用 [↗](URL) 标注来源。\n\n{template}"},
+            {"role": "user", "content": f"请为「{industry}」撰写行业深度分析报告，3000-5000字。\n\n研究材料：\n{research_text[:12000]}\n\n深度页面：\n{deep_text[:8000]}"},
+        ],
+        temperature=0.5,
+        max_tokens=10000,
+    )
+    report = resp.choices[0].message.content
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(report, encoding="utf-8")
+    progress("done", 100)
+    return report
+
+
 def _ensure_deep_report(industry: str) -> Path:
-    """工厂接单版强制先有深度报告：已存在就直接用，否则自动生成一份。"""
+    """工厂接单版优先用 scripts/research.py 架构的报告；没有就自动生成。"""
     safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80][:50]
-    path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
-    if path.exists():
-        return path
-    _run_deep_research(industry, safe, path)
-    return path
+    research_path = PROJECT_ROOT / "output" / f"report_{safe}.md"
+    if research_path.exists() and not _is_template_report(research_path.read_text(encoding="utf-8")):
+        return research_path
+
+    legacy_path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
+    if legacy_path.exists() and not _is_template_report(legacy_path.read_text(encoding="utf-8")):
+        return legacy_path
+
+    _run_research_style_deep_report(industry, safe, research_path)
+    return research_path
 
 
 def _deep_merge(main_report: str, sub_reports: list[dict], industry: str) -> str:
@@ -1472,7 +1648,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.15.0", "date": "2026-08-08"}
+    return {"version": "2.16.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
