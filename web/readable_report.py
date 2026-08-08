@@ -659,7 +659,7 @@ def generate_from_deep_report(
             ):
                 return
             seen_store_urls.add(url)
-            source_id = f"T{len(store_sources) + 1}"
+            source_id = f"S{len(sources) + len(store_sources) + 1}"
             store_sources.append({
                 "id": source_id, "url": url, "title": title,
                 "snippet": snippet, "topic": topic, "deep_read": False,
@@ -685,10 +685,10 @@ def generate_from_deep_report(
     evidence = evidence_text[:60000]
     store_evidence = "\n\n".join(store_evidence_parts)
     if store_evidence:
-        evidence += "\n\n---\n\n淘宝/1688 头部店铺搜索结果（用于 players 板块，编号为 [T#]）：\n" + store_evidence
+        evidence += "\n\n---\n\n淘宝/1688 头部店铺搜索结果（用于 players 板块，编号延续为 [S#]）：\n" + store_evidence
     prompt = f"""你是服务于义乌及产业带工厂老板的产业情报分析师，读者主要做代工（OEM/ODM）或走量批发。以下是一份已经完成的「{industry}」深度研究报告，引用已经替换成 [S#] 编号。请只从这份深度报告里选取对工厂接单、代工、走量批发真正有用的内容，做成《工厂接单研判页》。
 
-深度报告通常按五章组织：行业概述、发展路径、近期热点、竞争格局、趋势预测。请以这五章为骨架组织老板版：行业概述转成“市场、规模、产业链与工厂位置”，发展路径转成“品类怎么走到今天、哪些节点影响现在”，近期热点转成“订单、爆款与正在发生的事”，竞争格局转成“玩家、代工、渠道与利润分布”，趋势预测转成“接下来会怎么变、什么款有空间”，再补充风险、下一步验证和头部品牌与店铺。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。可以提及深度报告里真实出现的头部品牌、淘宝/1688头部店铺、跨境卖家，也可以使用下方补充的 [T#] 淘宝/1688店铺搜索结果，但必须来自资料并有来源；只写它们对工厂接单的含义。
+深度报告通常按五章组织：行业概述、发展路径、近期热点、竞争格局、趋势预测。请以这五章为骨架组织老板版：行业概述转成“市场、规模、产业链与工厂位置”，发展路径转成“品类怎么走到今天、哪些节点影响现在”，近期热点转成“订单、爆款与正在发生的事”，竞争格局转成“玩家、代工、渠道与利润分布”，趋势预测转成“接下来会怎么变、什么款有空间”，再补充风险、下一步验证和头部品牌与店铺。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。可以提及深度报告里真实出现的头部品牌、淘宝/1688头部店铺、跨境卖家，也可以使用下方补充的 [S#] 淘宝/1688店铺搜索结果，但必须来自资料并有来源；只写它们对工厂接单的含义。
 
 这不是经营指令书：你不了解该工厂的真实成本、产能、客户和报价，不能替老板下“应该投产/应该赚钱”的结论。只能使用深度报告中明确出现的事实和 [S#] 编号；不确定就写“资料不足，建议验证”，绝不能编造数字、国家、产品、价格、销量、利润或来源。不要输出 Markdown，不要输出解释，只输出一个合法 JSON 对象。
 
@@ -750,20 +750,13 @@ sections 从上述 12 个 id 中选择 6-11 个，顺序由深度报告内容决
     return content
 
 
-def _source_title(source: dict[str, Any], max_len: int = 18) -> str:
-    title = str(source.get("title", "")).strip()
-    if not title:
-        return ""
-    return title if len(title) <= max_len else title[:max_len] + "…"
-
-
 def _source_link(source_id: str, source_map: dict[str, dict[str, Any]]) -> str:
     source = source_map.get(source_id)
     if source and source.get("url"):
         return (
             f'<a href="{html.escape(source["url"], quote=True)}" target="_blank" rel="noopener noreferrer" '
             f'title="{html.escape(source.get("title", ""), quote=True)}">'
-            f'[{html.escape(source_id, quote=True)}] {html.escape(_source_title(source))}</a>'
+            f'[{html.escape(source_id, quote=True)}]</a>'
         )
     return f'<span class="source-ref">[{html.escape(source_id, quote=True)}]</span>'
 
@@ -983,8 +976,7 @@ def render_html(content: dict[str, Any]) -> str:
     sections_html = "".join(_render_section(section, source_map) for section in content["sections"])
     sources_html = "".join(
         f'<li><span class="source-meta">{html.escape(source.get("topic", "资料"))}{" · 深读" if source.get("deep_read") else ""}</span>'
-        f'<span class="source-title">[{html.escape(source["id"])}] {html.escape(source["title"])}</span>'
-        f'<span class="source-url">{html.escape(source.get("url", ""), quote=True)}</span></li>'
+        f'<span class="source-title" title="{html.escape(source.get("title", ""), quote=True)}">[{html.escape(source["id"])}]</span></li>'
         for source in content["sources"]
     ) or "<li>本次未取得可引用的公开来源。</li>"
     title = html.escape(content["industry"])
@@ -1023,7 +1015,7 @@ def render_html(content: dict[str, Any]) -> str:
 </style><style>
 :root{{--muted:#4f4e48!important}}.price-flow{{background:var(--white)!important;border:1px solid var(--ink)!important;box-shadow:6px 6px 0 var(--ink)!important}}.price-stop{{background:var(--white)!important;border:1px solid var(--ink)!important}}.price-stop p{{color:#35342f!important}}.flow-arrow{{color:var(--coral)!important}}.risk-item p{{color:rgba(255,255,255,.88)!important}}.citations,.no-citation,.chart-sources,.source-meta{{font-size:11px!important}}.citations a{{padding:3px 7px!important;font-size:11px!important}}.source-meta{{color:var(--ink)!important;background:var(--white)!important;border:1px solid var(--ink)!important}}.data-table th{{font-size:11px!important}}.source-ref{{color:var(--muted)!important}}.data-table .citations{{display:inline-block!important;margin:4px 0 0!important}}.chart-sources a{{padding:3px 6px!important}}.section-pricing .price-flow,.section-pricing .price-stop,.section-pricing .price-stop span,.section-pricing .price-stop b,.section-pricing .price-stop p{{color:var(--ink)!important}}.section-pricing .flow-arrow{{color:var(--coral)!important}}.section-pricing .chart-panel,.section-pricing .data-panel,.section-pricing .data-table{{color:var(--ink)!important}}.section-pricing .data-note,.section-pricing .chart-note,.section-pricing .chart-sources{{color:var(--muted)!important}}
 </style><style>
-.section-media{{max-width:560px;margin:24px 0 0;border:1px solid var(--ink);background:var(--white);box-shadow:6px 6px 0 var(--coral)}}.section-media img{{display:block;width:100%;max-height:320px;object-fit:cover}}.section-media figcaption{{padding:8px 12px;background:var(--white);border-top:1px solid var(--ink);font:700 11px 'Roboto Mono',monospace;color:var(--ink)}}.section:nth-of-type(even) .section-media{{margin-left:auto}}.source-title{{display:block;margin-top:3px;color:var(--ink)!important}}.source-url{{display:block;margin-top:2px;color:var(--muted);font-size:11px;word-break:break-all}}.sources li{{margin:0 0 12px}}.citations a{{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}}
+.section-media{{max-width:560px;margin:24px 0 0;border:1px solid var(--ink);background:var(--white);box-shadow:6px 6px 0 var(--coral)}}.section-media img{{display:block;width:100%;max-height:320px;object-fit:cover}}.section-media figcaption{{padding:8px 12px;background:var(--white);border-top:1px solid var(--ink);font:700 11px 'Roboto Mono',monospace;color:var(--ink)}}.section:nth-of-type(even) .section-media{{margin-left:auto}}.source-title{{display:block;margin-top:3px;color:var(--ink)!important}}.sources li{{margin:0 0 12px}}.citations a{{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}}
 </style><style>
 .inline-source{{display:inline-block;margin:0 2px;padding:1px 4px;background:var(--lime);border:1px solid var(--ink);color:var(--ink);font:700 10px 'Roboto Mono',monospace;text-decoration:none;white-space:nowrap}}.inline-source:hover{{background:var(--coral)}}
 </style><style>
