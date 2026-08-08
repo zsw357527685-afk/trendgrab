@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.23.0")
+app = FastAPI(title="trend_grab", version="2.24.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -1187,18 +1187,18 @@ def _run_research_style_deep_report(industry: str, safe: str, path: Path, on_pro
 
 
 def _ensure_deep_report(industry: str) -> Path:
-    """工厂接单版优先用 scripts/research.py 架构的报告；没有就自动生成。"""
+    """工厂接单版优先用完整深度研究报告；没有就自动生成完整深度研究。"""
     safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80][:50]
+    deep_path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
+    if deep_path.exists() and not _is_template_report(deep_path.read_text(encoding="utf-8")):
+        return deep_path
+
     research_path = PROJECT_ROOT / "output" / f"report_{safe}.md"
-    if research_path.exists() and not _is_template_report(research_path.read_text(encoding="utf-8")):
+    if research_path.exists() and research_path.stat().st_size > 20000 and not _is_template_report(research_path.read_text(encoding="utf-8")):
         return research_path
 
-    legacy_path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
-    if legacy_path.exists() and not _is_template_report(legacy_path.read_text(encoding="utf-8")):
-        return legacy_path
-
-    _run_research_style_deep_report(industry, safe, research_path)
-    return research_path
+    _run_deep_research(industry, safe, deep_path)
+    return deep_path
 
 
 def _deep_merge(main_report: str, sub_reports: list[dict], industry: str) -> str:
@@ -1552,11 +1552,10 @@ h1{{font-size:24px;font-weight:700}}header p{{color:var(--muted);margin-top:8px;
 async def view_deep_report(name: str):
     clean_name = re.sub(r"^report_", "", name)
     safe = re.sub(r'[\\/:*?"<>|]', '_', clean_name)[:80][:50]
-    path = PROJECT_ROOT / "output" / f"report_{safe}.md"
-    if not path.exists():
-        legacy = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
-        if legacy.exists():
-            path = legacy
+    path = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
+    if not path.exists() or _is_template_report(path.read_text(encoding="utf-8")):
+        fallback = PROJECT_ROOT / "output" / f"report_{safe}.md"
+        path = fallback if fallback.exists() and fallback.stat().st_size > 20000 else path
     if not path.exists():
         raise HTTPException(404, "深度报告不存在")
     content = path.read_text(encoding="utf-8")
@@ -1678,7 +1677,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.23.0", "date": "2026-08-08"}
+    return {"version": "2.24.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
