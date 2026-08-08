@@ -101,6 +101,17 @@ def _normalise_data_points(value: Any, valid_source_ids: set[str]) -> list[dict[
     return points
 
 
+def _normalise_image_queries(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    queries: list[str] = []
+    for item in value[:3]:
+        query = str(item).strip()
+        if 2 <= len(query) <= 40 and query not in queries:
+            queries.append(query)
+    return queries
+
+
 def _normalise_chart(value: Any, valid_source_ids: set[str]) -> dict[str, Any] | None:
     """只保留数据完整、口径清楚的图表；没有把握就不渲染。"""
     if not isinstance(value, dict):
@@ -213,6 +224,7 @@ def normalise_content(
                 "sources": [str(source_id) for source_id in item.get("sources", [])[:12] if str(source_id) in valid_source_ids] if isinstance(item.get("sources"), list) else [],
                 "data_points": _normalise_data_points(item.get("data_points"), valid_source_ids),
                 "chart": _normalise_chart(item.get("chart"), valid_source_ids),
+                "image_queries": _normalise_image_queries(item.get("image_queries")),
                 "cards": _normalise_cards(item.get("cards"), valid_source_ids) or [{"title": "资料提示", "text": "公开资料暂不足以形成可靠结论。", "sources": []}],
             }
         )
@@ -222,7 +234,7 @@ def normalise_content(
             "id": "risks", "eyebrow": "06 / 风险与缺口", "title": "公开资料暂不足以判断接单机会",
             "summary": "本次搜索没有取得足够可靠且相关的接单资料。",
             "analysis": "不建议把搜索摘要当作接单结论。下一步应补充可核实的产品链接、供应商报价、平台后台或客户访谈资料。",
-            "sources": [], "data_points": [], "chart": None,
+            "sources": [], "data_points": [], "chart": None, "image_queries": [],
             "cards": [{"title": "资料提示", "text": "资料不足，建议继续核实。", "sources": []}],
         }]
 
@@ -522,6 +534,7 @@ JSON 必须符合：
         "sources":["S1"]
       }},
       "sources":["S1","S2"],
+      "image_queries":["具体产品/场景搜索词1","具体产品/场景搜索词2"],
       "cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]
     }}
   ]
@@ -531,7 +544,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读研究资料，再写事实和分析，最后从资料里挑来源编号。禁止先写内容再反向找来源，禁止凭印象补来源。资料里没有的事实不要写，资料里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 180-260 字。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由本次资料决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给资料里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和来源中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的来源编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。如果某来源只提到行业整体、没有支撑这条具体数据或案例，不要放进去。
 
 研究资料（已按订单、产品、渠道、门槛、风险均衡挑选；标有“深读”的资料正文更完整）：
 {evidence}"""
@@ -639,6 +652,7 @@ JSON 必须符合：
         "sources":["S1"]
       }},
       "sources":["S1","S2"],
+      "image_queries":["具体产品/场景搜索词1","具体产品/场景搜索词2"],
       "cards":[{{"title":"...","text":"不超过120字","sources":["S1","S2"]}}]
     }}
   ]
@@ -648,7 +662,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读深度报告，再写事实和分析，最后从报告里挑 [S#] 编号。禁止先写内容再反向找来源，禁止凭印象补来源。报告里没有的事实不要写，报告里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 180-260 字。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块的 analysis 必须正面回应 title，分成 2-4 个短段落，段落之间用空行分隔；每段先给判断，再给报告里的支撑，不要写成一整段；总长度 180-260 字。每个板块根据自己正文里的具体产品、款式、场景、案例，写 1-2 个图片搜索词到 image_queries；不能只写行业名或板块名，没有把握就返回 []。每个板块最多 3 张卡片；cards 的 text 必须直接解释卡片 title，不能只堆资料；写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只能用于同一指标、同一单位的对比（例如不同年份的同一市场规模）；不要把销量和销售额、数量和金额、不同币种混在一张图。没有可比较的同口径数据就省略 chart，data_points 仍然展示。labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
 
 深度报告（已替换为 [S#] 编号）：
 {evidence}"""

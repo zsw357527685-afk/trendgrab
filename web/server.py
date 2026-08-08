@@ -39,7 +39,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.19.0")
+app = FastAPI(title="trend_grab", version="2.20.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -314,9 +314,16 @@ def _attach_readable_section_images(content: dict, search_images, save_images) -
 
     def load_one(section):
         try:
-            query = f"{content['industry']} {READABLE_SECTION_IMAGE_QUERIES.get(section.get('id'), '工厂 产品')}"
-            images = search_images(query, 2)
-            return section, save_images(f"{safe}_{section.get('id', 'section')}", images, 1)
+            queries = section.get("image_queries") or [READABLE_SECTION_IMAGE_QUERIES.get(section.get("id"), "工厂 产品")]
+            candidates = []
+            seen_urls = set()
+            for query in queries[:2]:
+                for image in search_images(f"{content['industry']} {query}", 3):
+                    url = image.get("url", "")
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        candidates.append(image)
+            return section, save_images(f"{safe}_{section.get('id', 'section')}", candidates, 1)
         except Exception:
             return section, []
 
@@ -1648,7 +1655,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.19.0", "date": "2026-08-08"}
+    return {"version": "2.20.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
