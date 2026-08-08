@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.40.0")
+app = FastAPI(title="trend_grab", version="2.41.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -585,9 +585,19 @@ async def auth_list_codes(token: str = ""):
     if token != ADMIN_CODE:
         raise HTTPException(403, "仅管理员可操作")
     data = _load_auth()
+    readable_dir = PROJECT_ROOT / "output" / "readable"
     result = {}
     for c, info in data.items():
-        result[c] = {"web_left": info.get("web_left", 0), "report_count": len(info.get("reports", []))}
+        report_count = 0
+        seen = set()
+        for r in info.get("reports", []):
+            safe = re.sub(r'[\\/:*?"<>|]', '_', str(r.get("industry", "")))[:80]
+            if safe in seen:
+                continue
+            if (readable_dir / f"{safe}.html").exists():
+                seen.add(safe)
+                report_count += 1
+        result[c] = {"web_left": info.get("web_left", 0), "report_count": report_count}
     return result
 
 
@@ -1737,7 +1747,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.40.0", "date": "2026-08-08"}
+    return {"version": "2.41.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
