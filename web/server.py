@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.42.0")
+app = FastAPI(title="trend_grab", version="2.43.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -1615,8 +1615,8 @@ header p{color:var(--muted);font:700 12px 'Roboto Mono',monospace;letter-spacing
 .content ul,.content ol{margin:10px 0;padding-left:24px}
 .content li{margin:6px 0}
 .content strong{font-weight:900}
-.content a{color:var(--ink);background:var(--lime);border:1px solid var(--line);padding:1px 5px;text-decoration:none;box-shadow:2px 2px 0 var(--ink)}
-.content a:hover{background:var(--coral)}
+.content a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
+.content a:hover{color:var(--coral)}
 .content table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;border:1px solid var(--line)}
 .content th,.content td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
 .content th{background:var(--paper-2);font-weight:800}
@@ -1770,7 +1770,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.42.0", "date": "2026-08-08"}
+    return {"version": "2.43.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
