@@ -40,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.41.0")
+app = FastAPI(title="trend_grab", version="2.42.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -650,6 +650,31 @@ async def generate_readable(req: GenerateRequest):
     if not c:
         raise HTTPException(403, "授权码无效或次数已用完")
 
+    safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
+    readable_dir = PROJECT_ROOT / "output" / "readable"
+    cached_path = readable_dir / f"{safe}.json"
+    if cached_path.exists():
+        content = json.loads(cached_path.read_text(encoding="utf-8"))
+        content.setdefault("deep_report_url", f"/deep-report/{quote(safe)}")
+        readable_html = render_readable_html(content)
+        (readable_dir / f"{safe}.html").write_text(readable_html, encoding="utf-8")
+        return {
+            "industry": industry,
+            "path": str(readable_dir / f"{safe}.html"),
+            "url": f"/readable/{safe}",
+            "cached": True,
+            "outline": {
+                "headline": content.get("headline", ""),
+                "decision": content.get("decision", ""),
+                "signals": content.get("signals", []),
+                "sections": [
+                    {"eyebrow": section.get("eyebrow", ""), "title": section.get("title", "")}
+                    for section in content.get("sections", [])
+                ],
+            },
+            "web_left": c.get("web_left", 0),
+        }
+
     try:
         deep_path = _ensure_deep_report(industry)
         deep_text = deep_path.read_text(encoding="utf-8")
@@ -663,8 +688,6 @@ async def generate_readable(req: GenerateRequest):
     except Exception as e:
         raise HTTPException(500, f"工厂接单研判页生成失败：{e}")
 
-    safe = re.sub(r'[\\/:*?"<>|]', '_', industry)[:80]
-    readable_dir = PROJECT_ROOT / "output" / "readable"
     readable_dir.mkdir(parents=True, exist_ok=True)
     content_path = readable_dir / f"{safe}.json"
     html_path = readable_dir / f"{safe}.html"
@@ -1747,7 +1770,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.41.0", "date": "2026-08-08"}
+    return {"version": "2.42.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──

@@ -404,7 +404,7 @@ content.replaceChildren();
 const outline=data.outline||{};
 const panel=document.createElement('section');
 panel.className='readable-outline';
-const kicker=document.createElement('span'); kicker.className='readable-kicker'; kicker.textContent='工厂接单研判页 / 生成完成'; panel.appendChild(kicker);
+const kicker=document.createElement('span'); kicker.className='readable-kicker'; kicker.textContent=data.cached?'工厂接单研判页 / 已有报告，直接加载':'工厂接单研判页 / 生成完成'; panel.appendChild(kicker);
 const title=document.createElement('h2'); title.textContent=outline.headline||industry+' · 工厂接单研判'; panel.appendChild(title);
 const decision=document.createElement('p'); decision.className='readable-decision'; decision.textContent=outline.decision||'请打开完整页面查看资料线索与待核实项。'; panel.appendChild(decision);
 const signals=document.createElement('div'); signals.className='outline-signals';
@@ -489,7 +489,8 @@ try{
 
   showReadableOutline(industry,data);
   if(data.web_left!==undefined){
-    document.getElementById('quotaDisplay').textContent='网页版'+data.web_left+'次';
+    const left=data.web_left<0?'无限':data.web_left;
+    document.getElementById('quotaDisplay').textContent='网页版'+left+'次';
   }
   report.classList.add('show');
   setTimeout(()=>document.getElementById('reportContent').scrollIntoView({behavior:'smooth',block:'start'}),200);
