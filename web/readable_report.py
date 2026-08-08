@@ -197,7 +197,7 @@ def normalise_content(
                 "title": _text(item.get("title"), fallback_title),
                 "summary": _text(item.get("summary")),
                 "analysis": _text(item.get("analysis"), "本板块公开资料有限，建议结合平台后台、报价和一线访谈继续验证。"),
-                "sources": [str(source_id) for source_id in item.get("sources", [])[:4] if str(source_id) in valid_source_ids] if isinstance(item.get("sources"), list) else [],
+                "sources": [str(source_id) for source_id in item.get("sources", [])[:12] if str(source_id) in valid_source_ids] if isinstance(item.get("sources"), list) else [],
                 "data_points": _normalise_data_points(item.get("data_points"), valid_source_ids),
                 "chart": _normalise_chart(item.get("chart"), valid_source_ids),
                 "cards": _normalise_cards(item.get("cards"), valid_source_ids) or [{"title": "资料提示", "text": "公开资料暂不足以形成可靠结论。", "sources": []}],
@@ -288,6 +288,13 @@ def _source_supports_claim(claim_text: str, source_text: str) -> bool:
     return bool(claim_keywords & source_keywords)
 
 
+def _clean_inline_sources(text: str, valid_ids: set[str]) -> str:
+    """删掉正文里已被校验删除的 [S#]，避免正文引用和来源按钮不一致。"""
+    def replace(match: re.Match[str]) -> str:
+        return match.group(0) if match.group(0)[1:-1] in valid_ids else ""
+    return re.sub(r"\[S\d+\]", replace, text)
+
+
 def _prune_unsupported_sources(
     content: dict[str, Any],
     sources: list[dict[str, Any]],
@@ -318,22 +325,59 @@ def _prune_unsupported_sources(
             section.get("analysis", ""),
         ])
         section["sources"] = keep_sources(section.get("sources", []), section_text)
+        valid_ids = set(section["sources"])
         for point in section.get("data_points", []):
             point["sources"] = keep_sources(
                 point.get("sources", []),
                 " ".join([point.get("label", ""), point.get("value", ""), point.get("note", "")]),
             )
+            valid_ids.update(point["sources"])
         chart = section.get("chart")
         if chart:
             chart["sources"] = keep_sources(
                 chart.get("sources", []),
                 " ".join([chart.get("title", ""), " ".join(chart.get("labels", [])), " ".join(str(v) for v in chart.get("values", [])), chart.get("unit", ""), chart.get("note", "")]),
             )
+            valid_ids.update(chart["sources"])
         for card in section.get("cards", []):
             card["sources"] = keep_sources(
                 card.get("sources", []),
                 " ".join([card.get("title", ""), card.get("text", "")]),
             )
+            valid_ids.update(card["sources"])
+
+        def add_inline_ids(text: str, claim_text: str) -> None:
+            for match in re.finditer(r"\[S(\d+)\]", str(text)):
+                source_id = f"S{match.group(1)}"
+                if source_id in evidence_by_id and _source_supports_claim(claim_text, evidence_by_id[source_id]):
+                    valid_ids.add(source_id)
+
+        add_inline_ids(section.get("summary", ""), section_text)
+        add_inline_ids(section.get("analysis", ""), section_text)
+        for card in section.get("cards", []):
+            card_text = " ".join([card.get("title", ""), card.get("text", "")])
+            add_inline_ids(card.get("text", ""), card_text)
+
+        ordered_ids = []
+        for source_id in section.get("sources", []) + [
+            source_id
+            for point in section.get("data_points", [])
+            for source_id in point.get("sources", [])
+        ] + [
+            source_id
+            for card in section.get("cards", [])
+            for source_id in card.get("sources", [])
+        ] + (chart.get("sources", []) if chart else []):
+            if source_id in valid_ids and source_id not in ordered_ids:
+                ordered_ids.append(source_id)
+        for source_id in valid_ids:
+            if source_id not in ordered_ids:
+                ordered_ids.append(source_id)
+        section["sources"] = ordered_ids
+        section["summary"] = _clean_inline_sources(str(section.get("summary", "")), valid_ids)
+        section["analysis"] = _clean_inline_sources(str(section.get("analysis", "")), valid_ids)
+        for card in section.get("cards", []):
+            card["text"] = _clean_inline_sources(str(card.get("text", "")), valid_ids)
     return content
 
 
@@ -636,6 +680,20 @@ def _render_citations(card: dict[str, Any], source_map: dict[str, dict[str, Any]
     return '<span class="citations">' + " ".join(_source_link(source_id, source_map) for source_id in source_ids) + '</span>'
 
 
+def _render_inline_sources(text: str, source_map: dict[str, dict[str, Any]]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        source_id = match.group(0)[1:-1]
+        source = source_map.get(source_id)
+        if source and source.get("url"):
+            return (
+                f'<a class="inline-source" href="{html.escape(source["url"], quote=True)}" '
+                f'target="_blank" rel="noopener noreferrer" '
+                f'title="{html.escape(source.get("title", ""), quote=True)}">[{html.escape(source_id, quote=True)}]</a>'
+            )
+        return match.group(0)
+    return re.sub(r"\[S\d+\]", replace, text)
+
+
 def _render_data_points(data_points: list[dict[str, Any]], source_map: dict[str, dict[str, Any]]) -> str:
     if not data_points:
         return ""
@@ -701,7 +759,7 @@ def _render_chart(chart: dict[str, Any] | None, source_map: dict[str, dict[str, 
 
 def _render_cards(cards: list[dict[str, Any]], source_map: dict[str, dict[str, Any]]) -> str:
     return "".join(
-        f'<article class="insight-card"><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>'
+        f'<article class="insight-card"><h3>{html.escape(card["title"])}</h3><p>{_render_inline_sources(html.escape(card["text"]), source_map)}</p>{_render_citations(card, source_map)}</article>'
         for card in cards
     )
 
@@ -723,8 +781,8 @@ def _render_section_image(section: dict[str, Any]) -> str:
 def _section_frame(section: dict[str, Any], body: str, source_map: dict[str, dict[str, Any]]) -> str:
     return f'''<section id="{section["id"]}" class="section section-{section["id"]}">
   <div class="section-head"><span>{html.escape(section["eyebrow"])}</span><h2>{html.escape(section["title"])}</h2></div>
-  <p class="section-summary">{html.escape(section["summary"])}</p>
-  <p class="section-analysis">{html.escape(section["analysis"])}</p>{_render_citations(section, source_map)}{body}
+  <p class="section-summary">{_render_inline_sources(html.escape(section["summary"]), source_map)}</p>
+  <p class="section-analysis">{_render_inline_sources(html.escape(section["analysis"]), source_map)}</p>{_render_citations(section, source_map)}{body}
 </section>'''
 
 
@@ -824,6 +882,8 @@ def render_html(content: dict[str, Any]) -> str:
 :root{{--muted:#4f4e48!important}}.price-flow{{background:var(--white)!important;border:1px solid var(--ink)!important;box-shadow:6px 6px 0 var(--ink)!important}}.price-stop{{background:var(--white)!important;border:1px solid var(--ink)!important}}.price-stop p{{color:#35342f!important}}.flow-arrow{{color:var(--coral)!important}}.risk-item p{{color:rgba(255,255,255,.88)!important}}.citations,.no-citation,.chart-sources,.source-meta{{font-size:11px!important}}.citations a{{padding:3px 7px!important;font-size:11px!important}}.source-meta{{color:var(--ink)!important;background:var(--white)!important;border:1px solid var(--ink)!important}}.data-table th{{font-size:11px!important}}.source-ref{{color:var(--muted)!important}}.data-table .citations{{display:inline-block!important;margin:4px 0 0!important}}.chart-sources a{{padding:3px 6px!important}}.section-pricing .price-flow,.section-pricing .price-stop,.section-pricing .price-stop span,.section-pricing .price-stop b,.section-pricing .price-stop p{{color:var(--ink)!important}}.section-pricing .flow-arrow{{color:var(--coral)!important}}.section-pricing .chart-panel,.section-pricing .data-panel,.section-pricing .data-table{{color:var(--ink)!important}}.section-pricing .data-note,.section-pricing .chart-note,.section-pricing .chart-sources{{color:var(--muted)!important}}
 </style><style>
 .section-media{{max-width:560px;margin:24px 0 0;border:1px solid var(--ink);background:var(--white);box-shadow:6px 6px 0 var(--coral)}}.section-media img{{display:block;width:100%;max-height:320px;object-fit:cover}}.section-media figcaption{{padding:8px 12px;background:var(--white);border-top:1px solid var(--ink);font:700 11px 'Roboto Mono',monospace;color:var(--ink)}}.section:nth-of-type(even) .section-media{{margin-left:auto}}.source-title{{display:block;margin-top:3px;color:var(--ink)!important}}.source-url{{display:block;margin-top:2px;color:var(--muted);font-size:11px;word-break:break-all}}.sources li{{margin:0 0 12px}}.citations a{{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}}
+</style><style>
+.inline-source{{display:inline-block;margin:0 2px;padding:1px 4px;background:var(--lime);border:1px solid var(--ink);color:var(--ink);font:700 10px 'Roboto Mono',monospace;text-decoration:none;white-space:nowrap}}.inline-source:hover{{background:var(--coral)}}
 </style></head><body>
 <nav><div class="wrap"><span>FACTORY BRIEF / 工厂接单研判</span><a href="#sources">查看资料来源 ↓</a></div></nav>
 <header class="hero"><div class="wrap"><div class="hero-grid"><div><div class="eyebrow">工厂接单研判页</div><h1 data-shadow="{title}"><span>{title}</span></h1><p class="hero-headline">{headline}</p><p>{html.escape(content["subheadline"])}</p></div><p class="decision">{html.escape(content["decision"])}</p></div></div></header>
