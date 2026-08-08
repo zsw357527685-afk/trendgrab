@@ -39,7 +39,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.16.0")
+app = FastAPI(title="trend_grab", version="2.17.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -297,12 +297,12 @@ def _save_readable_images(safe: str, images: list[dict], limit: int = 4) -> list
 
 
 READABLE_SECTION_IMAGE_QUERIES = {
-    "demand": "订单 爆款 工厂 出货",
-    "product": "产品 款式 工厂 1688",
-    "pricing": "价格 批发 1688 出厂价",
-    "orders": "采购 跨境 平台 批发",
-    "barriers": "认证 检测 工厂 质量",
-    "risks": "质量问题 投诉 风险",
+    "overview": "行业 产品 工厂 市场",
+    "history": "行业 发展 历史 里程碑",
+    "hot_topics": "爆款 热销 订单 案例",
+    "competition": "品牌 工厂 代工 供应链",
+    "trends": "新品 趋势 工艺 材料",
+    "risks": "风险 质量问题 投诉",
     "next": "展会 工厂 订单 客户",
 }
 
@@ -1648,7 +1648,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.16.0", "date": "2026-08-08"}
+    return {"version": "2.17.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──

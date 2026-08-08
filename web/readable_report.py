@@ -13,13 +13,13 @@ from urllib.parse import quote, urlparse
 
 
 SECTION_BLUEPRINT = (
-    ("demand", "01 / 订单信号", "现在有什么订单和需求在发生"),
-    ("product", "02 / 什么款好做", "哪些产品、规格、价格带适合工厂"),
-    ("pricing", "03 / 价格与利润", "出厂价、零售价和利润大概在哪"),
-    ("orders", "04 / 谁在给单", "哪些买家、平台、渠道在采购"),
-    ("barriers", "05 / 接单门槛", "认证、资质、工艺和供应链门槛"),
-    ("risks", "06 / 风险与缺口", "哪些风险会影响接单和走量"),
-    ("next", "07 / 下一步验证", "接单前最该补哪些资料"),
+    ("overview", "01 / 行业概述", "市场、规模、产业链与工厂位置"),
+    ("history", "02 / 发展路径", "品类起源、阶段与关键节点"),
+    ("hot_topics", "03 / 近期热点", "订单、爆款与正在发生的事"),
+    ("competition", "04 / 竞争格局", "玩家、代工、渠道与利润分布"),
+    ("trends", "05 / 趋势预测", "接下来会怎么变、什么款有空间"),
+    ("risks", "06 / 风险与不确定", "接单与走量的风险、缺口"),
+    ("next", "07 / 下一步验证", "接单前最该补的资料"),
 )
 
 BLOCKED_SOURCE_MARKERS = (
@@ -448,7 +448,7 @@ JSON 必须符合：
   "decision": "一句给工厂老板的结论：能确认什么、主要限制是什么",
   "sections": [
     {{
-      "id":"demand|product|pricing|orders|barriers|risks|next",
+      "id":"overview|history|hot_topics|competition|trends|risks|next",
       "title":"...",
       "summary":"不超过35字的判断句，只给结论，不罗列数据",
       "analysis":"180到260字的完整分析段落",
@@ -554,7 +554,7 @@ def generate_from_deep_report(
     evidence = evidence_text[:45000]
     prompt = f"""你是服务于义乌及产业带工厂老板的产业情报分析师，读者主要做代工（OEM/ODM）或走量批发。以下是一份已经完成的「{industry}」深度研究报告，引用已经替换成 [S#] 编号。请只从这份深度报告里选取对工厂接单、代工、走量批发真正有用的内容，做成《工厂接单研判页》。
 
-只保留：订单信号、什么款好做、价格和利润、谁在给单、接单门槛、风险与缺口、下一步验证。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。不要点名奢侈品牌或大牌做案例；如果资料只有品牌案例，就说成“经典大牌款”或“高端品牌款”。
+深度报告通常按五章组织：行业概述、发展路径、近期热点、竞争格局、趋势预测。请以这五章为骨架组织老板版：行业概述转成“市场、规模、产业链与工厂位置”，发展路径转成“品类怎么走到今天、哪些节点影响现在”，近期热点转成“订单、爆款与正在发生的事”，竞争格局转成“玩家、代工、渠道与利润分布”，趋势预测转成“接下来会怎么变、什么款有空间”，再补充风险和下一步验证。不要新增报告里没有的事实，不要写品牌营销策略、DTC 运营、消费者品牌故事或宏观叙事，除非它们直接关系到拿单、代工、批发、价格、认证或供应链。不要点名奢侈品牌或大牌做案例；如果资料只有品牌案例，就说成“经典大牌款”或“高端品牌款”。
 
 这不是经营指令书：你不了解该工厂的真实成本、产能、客户和报价，不能替老板下“应该投产/应该赚钱”的结论。只能使用深度报告中明确出现的事实和 [S#] 编号；不确定就写“资料不足，建议验证”，绝不能编造数字、国家、产品、价格、销量、利润或来源。不要输出 Markdown，不要输出解释，只输出一个合法 JSON 对象。
 
@@ -565,7 +565,7 @@ JSON 必须符合：
   "decision": "一句给工厂老板的结论：能确认什么、主要限制是什么",
   "sections": [
     {{
-      "id":"demand|product|pricing|orders|barriers|risks|next",
+      "id":"overview|history|hot_topics|competition|trends|risks|next",
       "title":"...",
       "summary":"不超过35字的判断句，只给结论，不罗列数据",
       "analysis":"180到260字的完整分析段落",
@@ -591,7 +591,7 @@ JSON 必须符合：
 
 工作顺序必须是：先阅读深度报告，再写事实和分析，最后从报告里挑 [S#] 编号。禁止先写内容再反向找来源，禁止凭印象补来源。报告里没有的事实不要写，报告里有的数字、价格、案例才允许进入正文并挂上对应编号。
 
-sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲报告支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
+sections 只能从上述 7 个 id 中选择 4–7 个，顺序由深度报告内容决定：overview=行业概述（市场、规模、产业链、工厂位置），history=发展路径（起源、阶段、关键节点），hot_topics=近期热点（订单、爆款、案例），competition=竞争格局（玩家、代工、渠道、利润），trends=趋势预测（短期/中期、什么款有空间），risks=风险与不确定，next=下一步验证。有足够事实支撑才写，不要为了凑全套框架硬写空模块。每个板块必须有一段 180-260 字的 analysis，先讲报告支持的接单含义，再说明需要验证什么。每个板块最多 3 张卡片；cards 写具体可用的接单线索，例如订单类型、起订量、价格带、认证要求、买家渠道，不要写“品牌通过 DTC 进入市场”这类老板不关心的内容。data_points 只有该板块有明确可引用数据时才写，2-5 条，没有数据就返回 []；value 必须和报告中的原始口径一致，不能换算、不能补造。chart 可选：只有同一单位、数据完整且能支撑图表的板块才输出，labels 和 values 数量一致（2-8），donut 的 values 合计需接近 100，没有把握就省略 chart。section、data_points、chart 和每张卡片只要出现事实、数字、平台、产品、国家或案例，就必须在 sources 字段填入真正支持该说法的 [S#] 编号；资料不足时保留空数组，不能猜编号。每个来源必须直接支撑它被挂上的那条事实；宁可少挂，不要为了看起来资料充足而硬挂不相关来源。
 
 深度报告（已替换为 [S#] 编号）：
 {evidence}"""
@@ -733,27 +733,27 @@ def _render_section(section: dict[str, Any], source_map: dict[str, dict[str, Any
     cards = section["cards"]
     section_id = section["id"]
     structured = _render_section_image(section) + _render_chart(section.get("chart"), source_map) + _render_data_points(section.get("data_points", []), source_map)
-    if section_id == "demand":
+    if section_id == "overview":
         body = structured + '<div class="market-layout"><div class="evidence-stack">' + _render_cards(cards[:2], source_map) + '</div>'
         if len(cards) > 2:
-            body += f'<aside class="market-poster"><small>DEMAND / SIGNAL</small><b>{html.escape(cards[2]["title"])}</b><p>{html.escape(cards[2]["text"])}</p>{_render_citations(cards[2], source_map)}</aside>'
+            body += f'<aside class="market-poster"><small>OVERVIEW / SIGNAL</small><b>{html.escape(cards[2]["title"])}</b><p>{html.escape(cards[2]["text"])}</p>{_render_citations(cards[2], source_map)}</aside>'
         body += '</div>'
-    elif section_id == "product":
+    elif section_id == "hot_topics":
         body = structured + '<div class="product-notes">' + "".join(
             f'<article class="product-note note-{index}"><span>0{index + 1}</span><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id == "pricing":
+    elif section_id == "competition":
         body = structured + '<div class="price-flow">' + "".join(
             f'<article class="price-stop"><span>STEP {index + 1}</span><b>{html.escape(card["title"])}</b><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</article>{"<i class=\"flow-arrow\">→</i>" if index < len(cards) - 1 else ""}'
             for index, card in enumerate(cards)
         ) + '</div>'
-    elif section_id == "orders":
+    elif section_id in {"history", "trends"}:
         body = structured + '<div class="channel-route">' + "".join(
             f'<article class="route-stop"><b>{index + 1:02d}</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</div></article>'
             for index, card in enumerate(cards)
         ) + '</div>'
-    else:  # barriers / risks / next
+    else:  # risks / next
         body = structured + '<div class="risk-wall">' + "".join(
             f'<article class="risk-item"><b>!</b><div><h3>{html.escape(card["title"])}</h3><p>{html.escape(card["text"])}</p>{_render_citations(card, source_map)}</div></article>'
             for card in cards
@@ -781,7 +781,7 @@ def render_html(content: dict[str, Any]) -> str:
         for index, image in enumerate(content.get("images", [])[:4], start=1)
         if isinstance(image, dict) and image.get("url")
     )
-    product_section = next((section for section in content["sections"] if section["id"] == "product"), None)
+    product_section = next((section for section in content["sections"] if section["id"] == "overview"), None)
     visual_context = ""
     if product_section:
         visual_context = (
