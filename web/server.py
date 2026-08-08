@@ -15,6 +15,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 import yaml
@@ -39,7 +40,7 @@ except ImportError:  # 支持以 `uvicorn web.server:app` 方式启动
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="trend_grab", version="2.20.0")
+app = FastAPI(title="trend_grab", version="2.21.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── LLM 配置 ─────────────────────────────────────────────
@@ -609,6 +610,7 @@ async def generate_readable(req: GenerateRequest):
         deep_text = deep_path.read_text(encoding="utf-8")
         content = generate_from_deep_report(client, LLM_MODEL, industry, deep_text)
         content = _attach_readable_section_images(content, search_images, _save_readable_images)
+        content["deep_report_url"] = f"/deep-report/{quote(deep_path.stem)}"
         readable_html = render_readable_html(content)
     except ValueError as e:
         raise HTTPException(502, f"工厂接单研判页内容格式异常，请重试：{e}")
@@ -1545,6 +1547,25 @@ h1{{font-size:24px;font-weight:700}}header p{{color:var(--muted);margin-top:8px;
 </body></html>"""
 
 
+@app.get("/deep-report/{name}", response_class=HTMLResponse)
+async def view_deep_report(name: str):
+    safe = re.sub(r'[\\/:*?"<>|]', '_', name)[:80][:50]
+    path = PROJECT_ROOT / "output" / f"report_{safe}.md"
+    if not path.exists():
+        legacy = PROJECT_ROOT / "output" / "deep" / safe / f"{safe}.md"
+        if legacy.exists():
+            path = legacy
+    if not path.exists():
+        raise HTTPException(404, "深度报告不存在")
+    content = path.read_text(encoding="utf-8")
+    return HTMLResponse(
+        SHARE_HTML
+        .replace("{title}", f"{safe} 深度报告")
+        .replace("{date}", datetime.now().strftime("%Y-%m-%d"))
+        .replace("{content_json}", json.dumps(content, ensure_ascii=False))
+    )
+
+
 SHARE_MAP_FILE = PROJECT_ROOT / "output" / "share_map.json"
 
 
@@ -1655,7 +1676,7 @@ static_dir = PROJECT_ROOT / "web" / "static"
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "2.20.0", "date": "2026-08-08"}
+    return {"version": "2.21.0", "date": "2026-08-08"}
 
 
 # ── 静态文件 ──
